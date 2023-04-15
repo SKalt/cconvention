@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "cargo",
+      "command": "build",
+      "problemMatcher": ["$rustc"],
+      "group": "build",
+      "label": "Build Server"
+    },
+    {
+      "label": "Build Extension in Background",
+      "group": "build",
+      "type": "npm",
+      "script": "watch",
+      "path": "editors/code/",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/"]
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Build Extension",
+      "group": "build",
+      "type": "npm",
+      "script": "build",
+      "path": "editors/code/",
+      "problemMatcher": {
+        "base": "$tsc",
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/"]
+      }
+    },
+    {
+      "label": "Build Server and Extension",
+      "dependsOn": ["Build Server", "Build Extension"],
+      "problemMatcher": "$rustc"
+    }
+  ]
+}

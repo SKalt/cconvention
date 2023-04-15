@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Septh/tmlanguage/master/tmlanguage.json",
+  "scopeName": "source.git-commit",
+  "patterns": [
+    {
+      "name": "comment",
+      "begin": "^#",
+      "end": "$"
+    },
+    {
+      "name": "commit",
+      "match": "[a-fA-F0-9]{7,}",
+      "comment": "Any hex digit sequence of over 7 digits"
+    },
+    {
+      "name": "issue",
+      "match": "#\\d+"
+    },
+    {
+      "name": "mention"
+    },
+    {
+      "name": "trailer-start",
+      "match": "^[a-zA-Z-]+[ ]*[:\\uff1a] "
+    },
+    {
+      "name": "breaking-change",
+      "match": "BREAKING CHANGE"
+    }
+  ]
+}

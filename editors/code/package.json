@@ -1,0 +1,65 @@
+{
+  "name": "code",
+  "version": "1.0.0",
+  "description": "Highlighting, validation and completion for conventional commit messages",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skalt/conventional-commit-language-server.git",
+    "directory": "editors/code"
+  },
+  "main": "./dist/main.min.common.js",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "watch": "./scripts/build.sh --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "git",
+    "git-commit",
+    "language-client",
+    "language-server",
+    "lsp",
+    "vscode-extension"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "git-commit",
+        "filenames": [
+          "GIT_COMMIT_EDITMSG"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "git-commit",
+        "scopeName": "source.git-commit",
+        "path": "./src/tmLanguage.json"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onLanguage:git-commit"
+  ],
+  "author": "Steven Kalt",
+  "homepage": "https://github.com/skalt/conventional-commit-language-server#TODO",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^18.15.11",
+    "@types/vscode": "^1.77.0",
+    "@vscode/vsce": "^2.18.0",
+    "esbuild": "^0.17.16",
+    "prettier": "^2.8.7",
+    "tslib": "^2.5.0",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  }
+}
