@@ -1,23 +1,40 @@
 {
-  "$schema": "https://raw.githubusercontent.com/Septh/tmlanguage/master/tmlanguage.json",
   "scopeName": "source.git-commit",
   "patterns": [
+    {
+      "name": "markup.heading",
+      "begin": "\\A",
+      "end": "$"
+    },
     {
       "name": "comment",
       "begin": "^#",
       "end": "$"
     },
     {
+      "name": "md_content",
+      "begin": "(^|\\\\G)(?!#)",
+      "while": "(^|\\\\G)(?!#)",
+      "end": "(^#|\\Z)",
+      "contentName": "meta.embedded.inline.markdown",
+      "patterns": [
+        {
+          "include": "text.html.markdown"
+        }
+      ]
+    },
+    {
       "name": "commit",
-      "match": "[a-fA-F0-9]{7,}",
-      "comment": "Any hex digit sequence of over 7 digits"
+      "match": "[a-f0-9]{7,50}",
+      "comment": "Any lowercase hex digit sequence of over 7-50 digits."
     },
     {
       "name": "issue",
       "match": "#\\d+"
     },
     {
-      "name": "mention"
+      "name": "mention",
+      "match": "@[a-zA-Z0-9-]+"
     },
     {
       "name": "trailer-start",
