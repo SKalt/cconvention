@@ -1,5 +1,4 @@
-use std::error::Error;
-
+use crop::{self, Rope};
 use lsp_server::{self, Message, RequestId, Response};
 use lsp_types::request::{self, RangeFormatting, SemanticTokensFullRequest, SemanticTokensRefresh};
 use lsp_types::{
@@ -10,9 +9,7 @@ use lsp_types::{
     TextDocumentContentChangeEvent, WillSaveTextDocumentParams,
 };
 use lsp_types::{CodeActionKind, DidChangeTextDocumentParams};
-use opentelemetry as logging;
-use tree_sitter::{self, InputEdit};
-use tree_sitter_gitcommit;
+use std::error::Error;
 
 mod syntax_token_scopes;
 
@@ -24,10 +21,6 @@ extern crate lazy_static;
 
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = get_capabilities();
-    static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
-    static ref HIGHLIGHTS_QUERY: tree_sitter::Query = {
-        tree_sitter::Query::new(LANGUAGE.clone(), tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap()
-    };
     // static ref SEMANTIC_TOKEN_LEGEND: Vec<lsp_types::SemanticTokenType> = {
     //     &HIGHLIGHTS_QUERY
     // }
@@ -138,17 +131,110 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
 /// 0s indicate that the character is not present
 #[derive(Debug, Default, Clone, Copy)]
 struct CCIndices {
-    open_paren: usize,
-    close_paren: usize,
-    colon: usize,
+    // TODO: compact to u8? Subjects should never be more than 255 chars
+    open_paren: Option<usize>,
+    close_paren: Option<usize>,
+    bang: Option<usize>,
+    colon: Option<usize>,
+    space: Option<usize>,
+}
+impl CCIndices {
+    /// parse a conventional commit header into its byte indices
+    /// ```txt
+    /// type(scope)!: subject
+    ///     (    )!:
+    /// ```
+    fn new(header: &str) -> Self {
+        let mut indices = Self::default();
+        let pre = if let Some(colon) = header.find(':') {
+            indices.colon = Some(colon);
+            &header[..colon]
+        } else {
+            header
+        };
+
+        indices.bang = pre.find('!');
+        if let Some(open_paren) = pre.find(':') {
+            indices.open_paren = Some(open_paren);
+            let mid = &pre[open_paren..];
+            let start = open_paren;
+            indices.close_paren = mid.find(')').map(|i| i + start);
+
+            let (mid, start) = if let Some(close_paren) = indices.close_paren {
+                (&pre[close_paren..], close_paren)
+            } else {
+                (mid, start)
+            };
+
+            indices.space = mid.find(' ').map(|i| i + start);
+        }
+        indices
+    }
+    /// returns the byte index of the end of the type:
+    /// ```txt
+    /// type(scope): <subject>
+    ///    ^
+    /// ```
+    fn type_end(&self) -> Option<usize> {
+        self.open_paren.or(self.bang).or(self.colon).or(self.space)
+    }
+    /// returns the byte range of the scope in the cc subject
+    /// ```txt
+    /// type(scope): <subject>
+    ///      ^^^^^
+    /// ```
+    fn scope(&self) -> Option<std::ops::Range<usize>> {
+        let start = self.open_paren?;
+        let end = self
+            .close_paren
+            .or(self.bang)
+            .or(self.colon)
+            .or(self.space)?;
+        Some(start as usize..end as usize)
+    }
+}
+
+struct Bitmask(Vec<u8>);
+impl Bitmask {
+    fn new(size: usize) -> Self {
+        Self(Vec::with_capacity(size))
+    }
+    fn set(&mut self, index: usize) {
+        let byte_index = index / 8;
+        let bit_index = index % 8;
+        if self.0.len() <= byte_index {
+            self.0.resize(byte_index + 1, 0);
+        }
+        self.0[byte_index] |= 1 << bit_index;
+    }
+    fn get(&self, index: usize) -> bool {
+        let byte_index = index / 8;
+        let bit_index = index % 8;
+        if self.0.len() <= byte_index {
+            return false;
+        }
+        self.0[byte_index] & (1 << bit_index) != 0
+    }
+
+    // TODO: handle resizing
+
+    fn iter_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.0.iter().enumerate().flat_map(|(byte_index, byte)| {
+            (0..8)
+                .filter(move |bit_index| byte & (1 << bit_index) != 0)
+                .map(move |bit_index| byte_index * 8 + bit_index)
+        })
+    }
 }
 
 struct SyntaxTree {
-    parser: tree_sitter::Parser,
-    tree: tree_sitter::Tree,
-    code: String,
+    code: crop::Rope,
+    comment_lines: Bitmask,
+    empty_lines: Bitmask,
+    subject_line_index: Option<usize>,
     cc_indices: CCIndices,
 }
+/// find the char index of the first instance of a character in a string
 fn find_index(s: &str, ch: char) -> Option<usize> {
     for (i, c) in s.char_indices() {
         if c == ch {
@@ -158,119 +244,113 @@ fn find_index(s: &str, ch: char) -> Option<usize> {
     None
 }
 
-/// given a line/column position in the text, return the the rune offset of the position
-fn find_offset(text: &str, pos: Position) -> Option<usize> {
-    let mut line_offset = 0;
-    if !text.contains("\n") {
-        // handle when `text.lines()` is empty
-        if pos.line == 0 {
-            return Some(pos.character as usize);
-        } else {
-            return None;
+/// given a line/column position in the text, return the the byte offset of the position
+fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
+    let mut byte_offset: usize = 0;
+    // only do the conversions once
+    let line_index = pos.line as usize;
+    let char_index = pos.character as usize;
+    for (i, line) in text.raw_lines().enumerate() {
+        // includes line breaks
+        if i == line_index {
+            // don't include the target line
+            break;
+        }
+        byte_offset += line.byte_len();
+    }
+    for (i, c) in text.line(line_index).chars().enumerate() {
+        byte_offset += c.len_utf8();
+        // include the target char in the byte-offset
+        if i == char_index {
+            break;
         }
     }
-    for (i, line) in text.lines().enumerate() {
-        if i == pos.line as usize {
-            return Some(line_offset + pos.character as usize);
-        }
-        line_offset += line.len() + 1;
-    }
-    None
+    Some(byte_offset)
 }
-/// transform a line/column position into a tree-sitter Point struct
-fn to_point(p: Position) -> tree_sitter::Point {
-    tree_sitter::Point {
-        row: p.line as usize,
-        column: p.character as usize,
+
+fn find_subject_line_index(comment_lines: &Bitmask, empty_lines: &Bitmask) -> Option<usize> {
+    for i in comment_lines.iter_indices() {
+        if !empty_lines.get(i) {
+            return Some(i);
+        }
     }
+    return None;
+}
+
+fn compute_line_bitmasks(code: &Rope) -> (Bitmask, Bitmask) {
+    let mut comment_lines = Bitmask::new(code.line_len());
+    let mut empty_lines = Bitmask::new(code.line_len());
+    for (i, line) in code.lines().enumerate() {
+        if line.bytes().next() == Some(b'#') {
+            comment_lines.set(i);
+        } else if line.is_empty() {
+            empty_lines.set(i);
+        }
+    }
+    (comment_lines, empty_lines)
 }
 
 impl SyntaxTree {
     fn new(code: String) -> Self {
-        let mut parser = {
-            let language = tree_sitter_gitcommit::language();
-            let mut parser = tree_sitter::Parser::new();
-            parser.set_language(language).unwrap();
-            parser
+        let code = crop::Rope::from(code);
+
+        let (comment_lines, empty_lines) = compute_line_bitmasks(&code);
+        let subject_line_index = find_subject_line_index(&comment_lines, &empty_lines);
+        let cc_indices = if let Some(subject_line_index) = subject_line_index {
+            CCIndices::new(code.line(subject_line_index).to_string().as_str())
+        } else {
+            CCIndices::default()
         };
-        let initial_tree = parser.parse(&code, None).unwrap();
         SyntaxTree {
-            parser,
-            tree: initial_tree,
             code,
-            cc_indices: CCIndices::default(),
+            comment_lines,
+            empty_lines,
+            subject_line_index,
+            cc_indices,
         }
+    }
+    fn recompute_indices(&mut self) {
+        self.cc_indices = if let Some(subject_line_index) = self.subject_line_index {
+            CCIndices::new(self.code.line(subject_line_index).to_string().as_str())
+        } else {
+            CCIndices::default()
+        };
     }
     fn edit(&mut self, edits: &[TextDocumentContentChangeEvent]) -> &mut Self {
         for edit in edits {
-            eprintln!("...");
             let range = edit.range.unwrap();
-            let offset = find_offset(&self.code, range.start);
-            if offset.is_none() {
-                eprintln!("failed to find offset for {:?}", range.start);
-                continue;
-            }
+            let offset = find_byte_offset(&self.code, range.start);
+            debug_assert!(
+                offset.is_some(),
+                "failed to find offset for {:?}",
+                range.start
+            );
             let start_byte = offset.unwrap();
-            let end_byte = find_offset(&self.code, range.end).unwrap();
-            eprintln!("computed bytes");
-            self.code.replace_range(start_byte..end_byte, &edit.text);
-            if range.start.line == 0 {
-                self.cc_indices.open_paren = find_index(&self.code, '(').unwrap_or(0);
-                self.cc_indices.close_paren = find_index(&self.code, ')').unwrap_or(0);
-                self.cc_indices.colon = find_index(&self.code, ':').unwrap_or(0);
-            }
-            eprintln!("computed indices");
-            let new_end_position = match edit.text.rfind('\n') {
-                Some(ind) => {
-                    let num_newlines = edit.text.bytes().filter(|&c| c == b'\n').count();
-                    tree_sitter::Point {
-                        row: range.start.line as usize + num_newlines,
-                        column: edit.text.len() - ind,
-                    }
+            let end_byte = find_byte_offset(&self.code, range.end).unwrap();
+            self.code.replace(start_byte..end_byte, &edit.text);
+
+            // update the semantic ranges --------------------------------------
+            // do a complete refresh of the bitmasks for simplicity
+            (self.comment_lines, self.empty_lines) = compute_line_bitmasks(&self.code);
+            self.subject_line_index =
+                find_subject_line_index(&self.comment_lines, &self.empty_lines);
+            if let Some(subject_line_index) = self.subject_line_index {
+                if range.start.line as usize <= subject_line_index
+                    && range.end.line as usize >= subject_line_index
+                {
+                    // also completely refresh the cc indices
+                    self.recompute_indices();
                 }
-                None => tree_sitter::Point {
-                    row: range.end.line as usize,
-                    column: range.end.character as usize + edit.text.len(),
-                },
-            };
-            eprintln!("found end position, submitting edit");
-            self.tree.edit(&InputEdit {
-                start_byte,
-                old_end_byte: end_byte,
-                new_end_byte: start_byte + edit.text.len(),
-                start_position: to_point(range.start),
-                old_end_position: to_point(range.end),
-                new_end_position,
-            })
+            }
         }
-        eprintln!("parsing");
-        self.tree = self.parser.parse(&self.code, Some(&self.tree)).unwrap();
-        eprintln!("{}", &self.tree.root_node().to_sexp());
-        let line = self.code.split('\n').nth(0).unwrap();
-        eprintln!("{}", line);
-        if self.cc_indices.open_paren != 0 {
-            eprint!("{}(", " ".repeat(self.cc_indices.open_paren));
-        }
-        if self.cc_indices.close_paren != 0 {
-            eprint!(
-                "{})",
-                " ".repeat(self.cc_indices.close_paren - self.cc_indices.open_paren - 1)
-            );
-        }
-        if self.cc_indices.colon != 0 {
-            eprint!(
-                "{}:",
-                " ".repeat(
-                    self.cc_indices.colon
-                        - self.cc_indices.close_paren
-                        - 1
-                        - self.cc_indices.open_paren
-                        - 1
-                )
-            );
-        }
-        eprintln!(";");
+
         self
+    }
+
+    fn update_line_bitmasks(&mut self) {
+        let (comment_lines, empty_lines) = compute_line_bitmasks(&self.code);
+        self.comment_lines = comment_lines;
+        self.empty_lines = empty_lines;
     }
 }
 
@@ -415,10 +495,7 @@ impl Server {
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         self.syntax_tree = SyntaxTree::new(params.text_document.text);
-        eprintln!(
-            "document parsed:\n{}",
-            self.syntax_tree.tree.root_node().to_sexp()
-        );
+        // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
     fn handle_did_change(
@@ -427,10 +504,7 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // let uri = params.text_document.uri;
         self.syntax_tree.edit(&params.content_changes);
-        eprintln!(
-            "document edited:\n{}",
-            self.syntax_tree.tree.root_node().to_sexp()
-        );
+        // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
 
@@ -508,14 +582,8 @@ impl Server {
             "completion position: line {}, column {}",
             &position.line, &position.character
         );
-        let code = self.syntax_tree.code.as_str();
-        let line_text = if let Some(line_text) = code.split("\n").nth(position.line as usize) {
-            line_text
-        } else {
-            debug_assert!(false, "unable to find line {} in code", position.line);
-            code
-        };
-        eprintln!("line_text:\n\t{}", line_text);
+        let code = self.syntax_tree.code.line(position.line as usize);
+        eprintln!("line_text:\n\t{}", code);
         eprintln!("\t{}^", " ".repeat(position.character as usize));
         // let mut result: lsp_types::CompletionList = lsp_types::CompletionList {
         //     is_incomplete: false,
