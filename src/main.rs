@@ -33,16 +33,6 @@ lazy_static! {
     // }
 }
 
-#[repr(u32)]
-enum SemanticTokenKind {
-    Comment = 0u32,
-    Keyword,
-    Parameter,
-    Heading,
-    Punctuation,
-    Other,
-}
-
 /// a constant (a function that always returns the same thing) that returns the
 /// server's capabilities.  We need to wrap the constant server capabilities in a function
 /// since the server's capabilities include a `Vec` which allocates memory.
@@ -144,13 +134,41 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
     }
 }
 
+/// indices of significant characters in a conventional commit header
+/// 0s indicate that the character is not present
+#[derive(Debug, Default, Clone, Copy)]
+struct CCIndices {
+    open_paren: usize,
+    close_paren: usize,
+    colon: usize,
+}
+
 struct SyntaxTree {
     parser: tree_sitter::Parser,
     tree: tree_sitter::Tree,
     code: String,
+    cc_indices: CCIndices,
 }
+fn find_index(s: &str, ch: char) -> Option<usize> {
+    for (i, c) in s.char_indices() {
+        if c == ch {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// given a line/column position in the text, return the the rune offset of the position
 fn find_offset(text: &str, pos: Position) -> Option<usize> {
     let mut line_offset = 0;
+    if !text.contains("\n") {
+        // handle when `text.lines()` is empty
+        if pos.line == 0 {
+            return Some(pos.character as usize);
+        } else {
+            return None;
+        }
+    }
     for (i, line) in text.lines().enumerate() {
         if i == pos.line as usize {
             return Some(line_offset + pos.character as usize);
@@ -159,6 +177,7 @@ fn find_offset(text: &str, pos: Position) -> Option<usize> {
     }
     None
 }
+/// transform a line/column position into a tree-sitter Point struct
 fn to_point(p: Position) -> tree_sitter::Point {
     tree_sitter::Point {
         row: p.line as usize,
@@ -179,14 +198,28 @@ impl SyntaxTree {
             parser,
             tree: initial_tree,
             code,
+            cc_indices: CCIndices::default(),
         }
     }
     fn edit(&mut self, edits: &[TextDocumentContentChangeEvent]) -> &mut Self {
         for edit in edits {
+            eprintln!("...");
             let range = edit.range.unwrap();
-            let start_byte = find_offset(&self.code, range.start).unwrap();
+            let offset = find_offset(&self.code, range.start);
+            if offset.is_none() {
+                eprintln!("failed to find offset for {:?}", range.start);
+                continue;
+            }
+            let start_byte = offset.unwrap();
             let end_byte = find_offset(&self.code, range.end).unwrap();
+            eprintln!("computed bytes");
             self.code.replace_range(start_byte..end_byte, &edit.text);
+            if range.start.line == 0 {
+                self.cc_indices.open_paren = find_index(&self.code, '(').unwrap_or(0);
+                self.cc_indices.close_paren = find_index(&self.code, ')').unwrap_or(0);
+                self.cc_indices.colon = find_index(&self.code, ':').unwrap_or(0);
+            }
+            eprintln!("computed indices");
             let new_end_position = match edit.text.rfind('\n') {
                 Some(ind) => {
                     let num_newlines = edit.text.bytes().filter(|&c| c == b'\n').count();
@@ -200,6 +233,7 @@ impl SyntaxTree {
                     column: range.end.character as usize + edit.text.len(),
                 },
             };
+            eprintln!("found end position, submitting edit");
             self.tree.edit(&InputEdit {
                 start_byte,
                 old_end_byte: end_byte,
@@ -209,7 +243,33 @@ impl SyntaxTree {
                 new_end_position,
             })
         }
+        eprintln!("parsing");
         self.tree = self.parser.parse(&self.code, Some(&self.tree)).unwrap();
+        eprintln!("{}", &self.tree.root_node().to_sexp());
+        let line = self.code.split('\n').nth(0).unwrap();
+        eprintln!("{}", line);
+        if self.cc_indices.open_paren != 0 {
+            eprint!("{}(", " ".repeat(self.cc_indices.open_paren));
+        }
+        if self.cc_indices.close_paren != 0 {
+            eprint!(
+                "{})",
+                " ".repeat(self.cc_indices.close_paren - self.cc_indices.open_paren - 1)
+            );
+        }
+        if self.cc_indices.colon != 0 {
+            eprint!(
+                "{}:",
+                " ".repeat(
+                    self.cc_indices.colon
+                        - self.cc_indices.close_paren
+                        - 1
+                        - self.cc_indices.open_paren
+                        - 1
+                )
+            );
+        }
+        eprintln!(";");
         self
     }
 }
@@ -277,7 +337,7 @@ impl Server {
 
     /// create a fresh server with a stdio-based connection.
     fn from_stdio() -> Self {
-        let (conn, _x) = lsp_server::Connection::stdio();
+        let (conn, _io) = lsp_server::Connection::stdio();
         Server {
             syntax_tree: SyntaxTree::new("".to_owned()),
             connection: conn,
@@ -395,17 +455,21 @@ impl Server {
             };
         }
         eprintln!("request: {:?}", request);
-        // handle!(DocumentHighlightRequest => handle_document_highlight);
         handle!(SemanticTokensFullRequest => handle_token_full);
         // handle!(SemanticTokensFullDeltaRequest => handle_token_full_delta);
         // handle!(SemanticTokensRangeRequest => handle_token_range);
         // handle!(SemanticTokensRefresh => handle_token_refresh);
+
+        handle!(Completion => handle_completion);
+
+        // handle!(DocumentHighlightRequest => handle_document_highlight);
         // handle!(DocumentLinkRequest => handle_doc_link_request);
         // sent from the client to the server to compute commands for a given text document and range.
         // The request is triggered when the user moves the cursor into a problem marker
+        // TODO: figure out how to resolve commit, issue/PR, and mention links
+        // on GitHub, BitBucket, GitLab, etc.
         // handle!(CodeActionRequest => handle_code_action);
         // sent from the client to the server to compute completion items at a given cursor position
-        // handle!(Completion => handle_completion);
         // handle!(HoverRequest => handle_hover);
         // handle!(RangeFormatting => handle_range_formatting);
         // handle!(ResolveCompletionItem => handle_resolving_completion_item);
@@ -439,7 +503,62 @@ impl Server {
         id: &RequestId,
         params: CompletionParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("completion")
+        let position = &params.text_document_position.position;
+        eprintln!(
+            "completion position: line {}, column {}",
+            &position.line, &position.character
+        );
+        let code = self.syntax_tree.code.as_str();
+        let line_text = if let Some(line_text) = code.split("\n").nth(position.line as usize) {
+            line_text
+        } else {
+            debug_assert!(false, "unable to find line {} in code", position.line);
+            code
+        };
+        eprintln!("line_text:\n\t{}", line_text);
+        eprintln!("\t{}^", " ".repeat(position.character as usize));
+        // let mut result: lsp_types::CompletionList = lsp_types::CompletionList {
+        //     is_incomplete: false,
+        //     items: vec![],
+        // };
+        if position.line == 0 {
+            // consider completions for the cc type, scope
+            // if position.character as usize < self.syntax_tree.cc_indices.colon
+            //     || self.syntax_tree.cc_indices.colon == 0
+            // {
+            //     if self.syntax_tree.cc_indices.open_paren >= self.syntax_tree.cc_indices.close_paren
+            //     {
+            //         // either we're missing a scope or there's a typo. Either way,
+            //     } else if position.character < self.syntax_tree.cc_indices.open_paren {
+            //         // consider completions for the cc type
+            //         // TODO: handle typos like "typescope): ..."
+            //         // TODO: handle typos
+            //         let prompt = &line_text[0..&self.syntax_tree.cc_indices.open_paren];
+            //     } else if position.character < self.syntax_tree.cc_indices.close_paren {
+            //         // consider completions for the cc scope
+            //     }
+            // } else {
+            // }
+
+            // (source (ERROR))
+            // (source (subject (prefix (type) (scope))) (...))
+            // let response: Response = Response {
+            //     id: id.clone(),
+            //     result: Some(serde_json::Value::Null),
+            //     error: None,
+            // };
+            // return Ok(response);
+        }
+        let result = lsp_types::CompletionList {
+            is_incomplete: false,
+            items: vec![],
+        };
+        let response: Response = Response {
+            id: id.clone(),
+            result: Some(serde_json::to_value(result).unwrap()),
+            error: None,
+        };
+        Ok(response)
     }
     fn handle_hover(
         &self,
@@ -467,68 +586,9 @@ impl Server {
         id: &RequestId,
         params: lsp_types::SemanticTokensParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
-        let mut cursor = tree_sitter::QueryCursor::new();
-        let bytes = self.syntax_tree.code.as_bytes();
-        let matches = cursor.matches(&HIGHLIGHTS_QUERY, self.syntax_tree.tree.root_node(), bytes);
-        let names = HIGHLIGHTS_QUERY.capture_names();
-        // HIGHLIGHTS_QUERY.capture_quantifiers(index)
-        let mut tokens: Vec<lsp_types::SemanticToken> = Vec::new();
-        let mut line: u32 = 0;
-        let mut start: u32 = 0;
-        for m in matches {
-            for c in m.captures {
-                let capture_name = names[c.index as usize].as_str();
-                // TODO: handle if the client doesn't support overlapping tokens
-                match capture_name {
-                    "text.title" | "comment" => continue, // these can overlap with other tokens
-                    _ => {}
-                };
-                let text = c.node.utf8_text(bytes).unwrap();
-                let range = c.node.range();
-                let start_line: u32 = range.start_point.row.try_into().unwrap();
-                if start_line > line {
-                    start = 0;
-                };
-                let delta_line: u32 = start_line - line;
-                let delta_start: u32 = {
-                    let token_start: u32 = range.start_point.column.try_into().unwrap();
-                    token_start - start
-                };
-                line = range.end_point.row.try_into().unwrap();
-                start = range.end_point.column.try_into().unwrap();
-
-                let token_type: u32 = *syntax_token_scopes::SYNTAX_TOKEN_SCOPES
-                    .get(capture_name)
-                    .unwrap();
-                let token = lsp_types::SemanticToken {
-                    delta_line,
-                    delta_start,
-                    length: (range.end_point.column - range.start_point.column)
-                        .try_into()
-                        .unwrap(),
-                    token_type,
-                    token_modifiers_bitset: 0,
-                };
-
-                tokens.push(token);
-                eprintln!(
-                    "capture::<{}> '{}' ({},{})-({},{}) dL{} dS{}",
-                    capture_name,
-                    text,
-                    range.start_point.row,
-                    range.start_point.column,
-                    range.end_point.row,
-                    range.end_point.column,
-                    token.delta_line,
-                    token.delta_start
-                );
-            }
-        }
-
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
-            data: tokens,
+            data: syntax_token_scopes::handle_all_tokens(&self.syntax_tree, params)?,
         });
         let result: Response = Response {
             id: id.clone(),
@@ -587,5 +647,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     // lsp_server::Connection::initialize(&self, server_capabilities);
     // let conn = lsp_server::Connection::connect(addr);
     Server::from_stdio().init()?.serve()?;
+    eprintln!("done");
     Ok(())
 }
