@@ -260,13 +260,7 @@ impl SyntaxTree {
         if self.cc_indices.colon != 0 {
             eprint!(
                 "{}:",
-                " ".repeat(
-                    self.cc_indices.colon
-                        - self.cc_indices.close_paren
-                        - 1
-                        - self.cc_indices.open_paren
-                        - 1
-                )
+                " ".repeat(self.cc_indices.colon - self.cc_indices.close_paren - 1)
             );
         }
         eprintln!(";");

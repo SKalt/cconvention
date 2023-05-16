@@ -48,8 +48,10 @@ pub(crate) fn handle_all_tokens(
             let capture_name = names[c.index as usize].as_str();
             // TODO: handle if the client doesn't support overlapping tokens
             match capture_name {
-                "text.title" | "comment" => continue, // these can overlap with other tokens
-                _ => {}
+                "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
+                other => {
+                    // eprintln!("capture::<{}>", other);
+                }
             };
             // let text = c.node.utf8_text(bytes).unwrap();
             let range = c.node.range();
@@ -60,7 +62,12 @@ pub(crate) fn handle_all_tokens(
             let delta_line: u32 = start_line - line;
             let delta_start: u32 = {
                 let token_start: u32 = range.start_point.column.try_into().unwrap();
-                token_start - start
+                // eprintln!("token_start: {}; start {}", token_start, start);
+                if token_start == 0 {
+                    0
+                } else {
+                    token_start - start
+                }
             };
             line = range.end_point.row.try_into().unwrap();
             start = range.end_point.column.try_into().unwrap();

@@ -500,9 +500,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-gitcommit"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40f8306ddd8769461d86db0d2810769a4bd7c2ed9a75a8843c418c791591b3ec"
+checksum = "4c7cb87717a3ffb2d483d3fed652173ef270a2c1879315e9a83d044aaa3dcb1f"
 dependencies = [
  "cc",
  "tree-sitter",
