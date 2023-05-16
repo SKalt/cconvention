@@ -229,8 +229,7 @@ impl Bitmask {
 
 struct SyntaxTree {
     code: crop::Rope,
-    comment_lines: Bitmask,
-    empty_lines: Bitmask,
+    message_lines: Bitmask,
     subject_line_index: Option<usize>,
     cc_indices: CCIndices,
 }
@@ -268,34 +267,27 @@ fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
     Some(byte_offset)
 }
 
-fn find_subject_line_index(comment_lines: &Bitmask, empty_lines: &Bitmask) -> Option<usize> {
-    for i in comment_lines.iter_indices() {
-        if !empty_lines.get(i) {
-            return Some(i);
-        }
-    }
-    return None;
+fn find_subject_line_index(message_lines: &Bitmask) -> Option<usize> {
+    message_lines.iter_indices().next()
 }
 
-fn compute_line_bitmasks(code: &Rope) -> (Bitmask, Bitmask) {
-    let mut comment_lines = Bitmask::new(code.line_len());
-    let mut empty_lines = Bitmask::new(code.line_len());
+fn find_message_lines(code: &Rope) -> Bitmask {
+    let mut message_lines = Bitmask::new(code.line_len());
     for (i, line) in code.lines().enumerate() {
         if line.bytes().next() == Some(b'#') {
-            comment_lines.set(i);
-        } else if line.is_empty() {
-            empty_lines.set(i);
+        } else {
+            message_lines.set(i);
         }
     }
-    (comment_lines, empty_lines)
+    message_lines
 }
 
 impl SyntaxTree {
     fn new(code: String) -> Self {
         let code = crop::Rope::from(code);
 
-        let (comment_lines, empty_lines) = compute_line_bitmasks(&code);
-        let subject_line_index = find_subject_line_index(&comment_lines, &empty_lines);
+        let message_lines = find_message_lines(&code);
+        let subject_line_index = find_subject_line_index(&message_lines);
         let cc_indices = if let Some(subject_line_index) = subject_line_index {
             CCIndices::new(code.line(subject_line_index).to_string().as_str())
         } else {
@@ -303,8 +295,7 @@ impl SyntaxTree {
         };
         SyntaxTree {
             code,
-            comment_lines,
-            empty_lines,
+            message_lines,
             subject_line_index,
             cc_indices,
         }
@@ -331,9 +322,8 @@ impl SyntaxTree {
 
             // update the semantic ranges --------------------------------------
             // do a complete refresh of the bitmasks for simplicity
-            (self.comment_lines, self.empty_lines) = compute_line_bitmasks(&self.code);
-            self.subject_line_index =
-                find_subject_line_index(&self.comment_lines, &self.empty_lines);
+            self.update_line_bitmasks();
+            self.subject_line_index = find_subject_line_index(&self.message_lines);
             if let Some(subject_line_index) = self.subject_line_index {
                 if range.start.line as usize <= subject_line_index
                     && range.end.line as usize >= subject_line_index
@@ -348,9 +338,8 @@ impl SyntaxTree {
     }
 
     fn update_line_bitmasks(&mut self) {
-        let (comment_lines, empty_lines) = compute_line_bitmasks(&self.code);
-        self.comment_lines = comment_lines;
-        self.empty_lines = empty_lines;
+        let message_lines = find_message_lines(&self.code);
+        self.message_lines = message_lines;
     }
 }
 
@@ -589,6 +578,35 @@ impl Server {
         //     is_incomplete: false,
         //     items: vec![],
         // };
+        if let Some(subject_line) = self.syntax_tree.subject_line_index {}
+        if self.syntax_tree.subject_line_index.is_none() {
+            // no subject line -- no completions
+        } else if position.line as usize == self.syntax_tree.subject_line_index.unwrap_or(0) {
+            // consider completions for the cc type, scope
+            let character = position.character as usize;
+            // FIXME: convert byte -> char indices
+            if self.syntax_tree.cc_indices.colon.is_none()
+                || self.syntax_tree.cc_indices.colon.unwrap() > character
+            {
+                if let Some(open_paren) = self.syntax_tree.cc_indices.open_paren {
+                    if open_paren > character {
+                        // consider completions for the cc type
+                    } else if open_paren < character {
+                        // consider completions for the scope
+                    } else {
+                        // at the open paren; no completions
+                    }
+                }
+            }
+        } else {
+            if self.syntax_tree.message_lines.get(position.line as usize) {
+                // the line is commented -- no completions
+            } else {
+                // this is a message line
+                // TODO: DCO, other trailer completions?
+            }
+        }
+
         if position.line == 0 {
             // consider completions for the cc type, scope
             // if position.character as usize < self.syntax_tree.cc_indices.colon
