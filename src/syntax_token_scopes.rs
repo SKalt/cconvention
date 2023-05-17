@@ -63,10 +63,12 @@ pub(crate) fn handle_all_tokens(
             // let text = c.node.utf8_text(bytes).unwrap();
             let range = c.node.range();
             let start_line: u32 = range.start_point.row.try_into().unwrap();
-            if start_line > line {
+            let delta_line: u32 = if start_line > line {
                 start = 0;
+                start_line - line
+            } else {
+                0
             };
-            let delta_line: u32 = start_line - line;
             let delta_start: u32 = {
                 let token_start: u32 = range.start_point.column.try_into().unwrap();
                 // eprintln!("token_start: {}; start {}", token_start, start);

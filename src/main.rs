@@ -10,6 +10,7 @@ use lsp_types::{
 };
 use lsp_types::{CodeActionKind, DidChangeTextDocumentParams};
 use std::error::Error;
+use std::f32::consts::E;
 use std::num;
 
 mod syntax_token_scopes;
@@ -25,6 +26,79 @@ lazy_static! {
     static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
     static ref SUBJECT_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
+    static ref DEFAULT_TYPES: Vec<lsp_types::CompletionItem> = {
+        vec![
+            lsp_types::CompletionItem {
+                label: "feat".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("adds a new feature".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "fix".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("fixes a bug".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "docs".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("changes only the documentation".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "style".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some(
+                    "changes the style but not the meaning of the code (such as formatting)"
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "perf".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("improves performance".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "test".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("adds or corrects tests".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "build".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("changes the build system or external dependencies".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "chore".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("changes outside the code, docs, or tests".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "ci".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("changes to the Continuous Integration (CI) system".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "refactor".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("changes the code without changing behavior".to_string()),
+                ..Default::default()
+            },
+            lsp_types::CompletionItem {
+                label: "revert".to_string(),
+                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+                detail: Some("reverts prior changes".to_string()),
+                ..Default::default()
+            },
+        ]
+    };
 }
 
 /// a constant (a function that always returns the same thing) that returns the
@@ -130,8 +204,10 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
 
 /// char indices of significant characters in a conventional commit header.
 /// Used to parse the header into its constituent parts and to find relevant completions.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 struct CCIndices {
+    line: String,
+    line_number: Option<usize>,
     // TODO: compact to u8? Subjects should never be more than 255 chars
     /// the first opening parenthesis in the subject line
     /// ```txt
@@ -184,15 +260,18 @@ impl CCIndices {
     /// type(scope)!: subject
     ///     (     )!:_
     /// ```
-    fn new(header: &str) -> Self {
+    fn new(header: String, line_number: usize) -> Self {
         let mut indices = Self::default();
+        indices.line_number = Some(line_number);
+        indices.line = header;
+        let line = indices.line.as_str();
         // type(scope)!: subject
         // type(scope)! subject
-        let prefix = if let Some(colon) = header.find(':') {
-            indices.colon = header.chars().position(|c| c == ':');
-            &header[..colon]
+        let prefix = if let Some(colon) = line.find(':') {
+            indices.colon = line.chars().position(|c| c == ':');
+            &line[..colon]
         } else {
-            header
+            line
         };
 
         // type(scope)!
@@ -228,13 +307,17 @@ impl CCIndices {
         indices.space = prefix.chars().position(|c| c == ' ');
         indices
     }
-    /// returns the char index of the end of the type:
+    /// returns the char index of the end of the type, NON-INCLUSIVE:
     /// ```txt
     /// type(scope): <subject>
     ///    ^
     /// ```
-    fn type_end(&self) -> Option<usize> {
-        self.open_paren.or(self.bang).or(self.colon).or(self.space)
+    fn type_end(&self) -> usize {
+        self.open_paren
+            .or(self.bang)
+            .or(self.colon)
+            .or(self.space)
+            .unwrap_or_else(|| self.line.chars().count())
     }
 
     /// returns the char index of the end of the scope:
@@ -257,52 +340,115 @@ impl CCIndices {
     fn prefix_end(&self) -> Option<usize> {
         self.colon.or(self.bang).or(self.close_paren).or(self.space)
     }
-    /// returns the byte range of the scope in the cc subject
-    /// ```txt
-    /// type(scope): <subject>
-    ///      ^^^^^
-    /// ```
-    fn scope(&self) -> Option<std::ops::Range<usize>> {
-        let start = self.open_paren?;
-        let end = self
-            .close_paren
-            .or(self.bang)
-            .or(self.colon)
-            .or(self.space)?;
-        Some(start as usize..end as usize)
-    }
-}
 
-struct Bitmask(Vec<u8>);
-impl Bitmask {
-    fn new(size: usize) -> Self {
-        Self(Vec::with_capacity(size))
-    }
-    fn set(&mut self, index: usize) {
-        let byte_index = index / 8;
-        let bit_index = index % 8;
-        if self.0.len() <= byte_index {
-            self.0.resize(byte_index + 1, 0);
+    fn debug_indices(&self) {
+        // TODO: ensure this function call is a no-op in release builds
+        eprintln!("debugging indices");
+        if self.line_number.is_none() {
+            eprintln!("no subject line");
+            return;
         }
-        self.0[byte_index] |= 1 << bit_index;
-    }
-    fn get(&self, index: usize) -> bool {
-        let byte_index = index / 8;
-        let bit_index = index % 8;
-        if self.0.len() <= byte_index {
-            return false;
+        let mut cursor = 0;
+
+        eprint!("\t{}\n\t", self.line);
+        if let Some(open_paren) = self.open_paren {
+            while cursor < open_paren {
+                cursor += 1;
+                eprint!(" ");
+            }
+            cursor += 1;
+            eprint!("(");
         }
-        self.0[byte_index] & (1 << bit_index) != 0
+        if let Some(close_paren) = self.close_paren {
+            while cursor < close_paren {
+                cursor += 1;
+                eprint!(" ");
+            }
+            cursor += 1;
+            eprint!(")");
+        }
+        if let Some(bang) = self.bang {
+            while cursor < bang {
+                cursor += 1;
+                eprint!(" ");
+            }
+            cursor += 1;
+            eprint!("!"); // HACK: relying on byte indices
+        }
+        if let Some(colon) = self.colon {
+            while cursor < colon {
+                cursor += 1;
+                eprint!(" ");
+            }
+            cursor += 1;
+            eprint!(":"); // HACK: relying on byte indices
+        }
+        if let Some(space) = self.space {
+            while cursor < space {
+                cursor += 1;
+                eprint!(" ");
+            }
+            eprint!("_")
+        }
+        eprintln!("\n");
     }
-
-    // TODO: handle resizing
-
-    fn iter_indices(&self) -> impl Iterator<Item = usize> + '_ {
-        self.0.iter().enumerate().flat_map(|(byte_index, byte)| {
-            (0..8)
-                .filter(move |bit_index| byte & (1 << bit_index) != 0)
-                .map(move |bit_index| byte_index * 8 + bit_index)
-        })
+    fn debug_ranges(&self) {
+        // TODO: ensure this function call is a no-op in release builds
+        eprintln!("debugging ranges:");
+        if self.line_number.is_none() {
+            eprintln!("no subject line");
+            return;
+        }
+        eprint!("\t{}\n\t", self.line);
+        let mut cursor = 0usize;
+        while cursor < self.type_end() {
+            cursor += 1;
+            eprint!("t")
+        }
+        if let Some(open_paren) = self.open_paren {
+            while cursor < open_paren {
+                cursor += 1;
+                eprint!(" ")
+            }
+            cursor += 1;
+            eprint!("(");
+        }
+        while cursor < self.scope_end().unwrap_or(0) {
+            cursor += 1;
+            eprint!("s");
+        }
+        if let Some(close_paren) = self.close_paren {
+            while cursor < close_paren {
+                cursor += 1;
+                eprint!(" ")
+            }
+            cursor += 1;
+            eprint!(")");
+        }
+        if let Some(bang) = self.bang {
+            while cursor < bang {
+                cursor += 1;
+                eprint!(" ")
+            }
+            cursor += 1;
+            eprint!("!")
+        }
+        if let Some(colon) = self.colon {
+            while cursor < colon {
+                cursor += 1;
+                eprint!(" ")
+            }
+            cursor += 1;
+            eprint!(":")
+        }
+        if let Some(space) = self.space {
+            while cursor < space {
+                cursor += 1;
+                eprint!(" ")
+            }
+            eprint!("_")
+        }
+        eprintln!("\n");
     }
 }
 
@@ -357,8 +503,8 @@ fn to_point(p: lsp_types::Position) -> tree_sitter::Point {
 impl SyntaxTree {
     fn new(text: String) -> Self {
         let code = crop::Rope::from(text.clone());
-        let cc_indices = if let Some((subject, _)) = get_subject_line(&code) {
-            CCIndices::new(subject.to_string().as_str())
+        let cc_indices = if let Some((subject, line_number)) = get_subject_line(&code) {
+            CCIndices::new(subject.to_string(), line_number)
         } else {
             CCIndices::default()
         };
@@ -377,11 +523,26 @@ impl SyntaxTree {
         }
     }
     fn recompute_indices(&mut self) {
-        self.cc_indices = if let Some((subject, _)) = get_subject_line(&self.code) {
-            CCIndices::new(subject.to_string().as_str())
+        self.cc_indices = if let Some((subject, line_number)) = self._get_subject_line_with_number()
+        {
+            CCIndices::new(subject.to_string(), line_number)
         } else {
             CCIndices::default()
         };
+    }
+    fn _get_subject_line_with_number(&self) -> Option<(String, usize)> {
+        if let Some(node) = self.get_ts_subject_line() {
+            return Some((
+                node.utf8_text(self.code.to_string().as_bytes())
+                    .unwrap()
+                    .to_string(),
+                node.start_position().row,
+            ));
+        }
+        if let Some((text, number)) = get_subject_line(&self.code) {
+            return Some((text.to_string(), number));
+        }
+        None
     }
     fn get_ts_subject_line(&self) -> Option<tree_sitter::Node> {
         let mut cursor = tree_sitter::QueryCursor::new();
@@ -719,13 +880,17 @@ impl Server {
         let character_index = position.character as usize;
         if position.line as usize == self.syntax_tree.get_subject_line_number() {
             // consider completions for the cc type, scope
-            if character_index < self.syntax_tree.cc_indices.type_end().unwrap_or(0) {
+            self.syntax_tree.cc_indices.debug_indices();
+            self.syntax_tree.cc_indices.debug_ranges();
+            // Using <= since the cursor should still trigger completions if it's at the end of a range
+            if character_index <= self.syntax_tree.cc_indices.type_end() {
                 // handle type completions
+                result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
                 eprintln!("type completions");
-            } else if character_index < self.syntax_tree.cc_indices.scope_end().unwrap_or(0) {
-                // handle scope completions
+            } else if character_index <= self.syntax_tree.cc_indices.scope_end().unwrap_or(0) {
+                // TODO: handle scope completions
                 eprintln!("scope completions");
-            } else if character_index < self.syntax_tree.cc_indices.prefix_end().unwrap_or(0) {
+            } else if character_index <= self.syntax_tree.cc_indices.prefix_end().unwrap_or(0) {
                 // suggest either a bang or a colon
                 eprintln!("end of prefix completions?");
             } else {
@@ -733,7 +898,11 @@ impl Server {
                 eprintln!("message, no completions");
             }
         } else {
-            let line = self.syntax_tree.code.line(position.line as usize); // panics if line is out of bounds
+            let line = self
+                .syntax_tree
+                .code
+                .line(position.line as usize)
+                .to_string(); // panics if line is out of bounds
             if let Some(c) = line.chars().next() {
                 if c == '#' {
                     // this is a commented line
@@ -741,6 +910,72 @@ impl Server {
                 } else {
                     // this is a message line
                     // completions for BREAKING CHANGE:
+                    // See https://www.conventionalcommits.org/en/v1.0.0/#specification
+                    if character_index >= 1 && character_index <= "BREAKING CHANGE: ".len() {
+                        let prefix = &line.as_str()[0..character_index];
+                        let breaking_change_match =
+                            if prefix == &"BREAKING-CHANGE: "[0..character_index] {
+                                Some("BREAKING-CHANGE: ")
+                            } else if prefix == &"BREAKING CHANGE:"[0..character_index] {
+                                Some("BREAKING CHANGE: ")
+                            } else {
+                                None
+                            };
+
+                        if let Some(label) = breaking_change_match {
+                            result.push(lsp_types::CompletionItem {
+                                label: label.to_owned(), // prefer BREAKING-CHANGE to comply with git trailers
+                                kind: Some(lsp_types::CompletionItemKind::KEYWORD),
+                                detail: Some("a breaking API change (correlating with MAJOR in Semantic Versioning)".to_owned()),
+                                text_edit: Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+                                    range: lsp_types::Range {
+                                        start: lsp_types::Position {
+                                            line: position.line,
+                                            character: 0,
+                                        },
+                                        end: lsp_types::Position {
+                                            line: position.line,
+                                            character: label.len().try_into().unwrap(),
+                                        },
+                                    },
+                                    new_text: label.to_owned(),
+                                })),
+                                ..Default::default()
+                            });
+                        }
+                        if character_index >= 1
+                            && character_index < "Signed-off-by".len()
+                            && &line.as_str()[..character_index]
+                                == &"Signed-off-by"[0..character_index]
+                        {
+                            result.push(lsp_types::CompletionItem {
+                                label: "Signed-off-by:".to_owned(),
+                                kind: Some(lsp_types::CompletionItemKind::KEYWORD),
+                                detail: Some(
+                                    "a sign-off (correlating with Signed-off-by in git trailers)"
+                                        .to_owned(),
+                                ),
+                                text_edit: Some(lsp_types::CompletionTextEdit::Edit(
+                                    lsp_types::TextEdit {
+                                        range: lsp_types::Range {
+                                            start: lsp_types::Position {
+                                                line: position.line,
+                                                character: 0,
+                                            },
+                                            end: lsp_types::Position {
+                                                line: position.line,
+                                                character: "Signed-off-by:".len() as u32,
+                                            },
+                                        },
+                                        new_text: "Signed-off-by: ".to_owned(),
+                                    },
+                                )),
+                                ..Default::default()
+                            });
+                        }
+
+                        eprintln!("end of message completions?");
+                    }
                 }
             }
         }
