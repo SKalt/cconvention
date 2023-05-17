@@ -17,10 +17,11 @@ export async function activate(
 ): Promise<LanguageClient> {
   const serverPath = context.asAbsolutePath(
     path.join(
+      // FIXME: figure out how to bundle the server binary with the ts code
       "..",
       "..",
       "target",
-      "debug",
+      "debug", // FIXME: use the prod build
       "conventional-commit-language-server"
     )
   );
@@ -31,7 +32,8 @@ export async function activate(
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "git-commit" },
-      { scheme: "file", pattern: "GIT_COMMIT_EDITMSG" },
+      { scheme: "file", pattern: "GIT_COMMIT_EDITMSG" }, // TODO: check pattern
+      { scheme: "file", pattern: "COMMIT_EDITMSG" },
     ],
     // TODO: add synchronization options when we support config files
   };
@@ -48,5 +50,4 @@ export async function activate(
 
 export async function deactivate() {
   return client.stop();
-  // await setContextValue(RUST_PROJECT_CONTEXT_NAME, undefined);
 }

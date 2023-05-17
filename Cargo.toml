@@ -14,3 +14,4 @@ serde_json = "1"
 serde = "1"
 # opentelemetry = "0.19.0" # local logging only, for the moment.
 crop = "0.3.0"
+tree-sitter-gitcommit = "0.3.2"

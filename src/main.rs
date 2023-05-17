@@ -1,4 +1,4 @@
-use crop::{self, Rope};
+use crop::{self, Rope, RopeSlice};
 use lsp_server::{self, Message, RequestId, Response};
 use lsp_types::request::{self, RangeFormatting, SemanticTokensFullRequest, SemanticTokensRefresh};
 use lsp_types::{
@@ -10,6 +10,7 @@ use lsp_types::{
 };
 use lsp_types::{CodeActionKind, DidChangeTextDocumentParams};
 use std::error::Error;
+use std::num;
 
 mod syntax_token_scopes;
 
@@ -21,9 +22,9 @@ extern crate lazy_static;
 
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = get_capabilities();
-    // static ref SEMANTIC_TOKEN_LEGEND: Vec<lsp_types::SemanticTokenType> = {
-    //     &HIGHLIGHTS_QUERY
-    // }
+    static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
+    static ref SUBJECT_QUERY: tree_sitter::Query =
+        tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
 }
 
 /// a constant (a function that always returns the same thing) that returns the
@@ -127,13 +128,52 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
     }
 }
 
-/// indices of significant characters in a conventional commit header
-/// 0s indicate that the character is not present
+/// char indices of significant characters in a conventional commit header.
+/// Used to parse the header into its constituent parts and to find relevant completions.
 #[derive(Debug, Default, Clone, Copy)]
 struct CCIndices {
     // TODO: compact to u8? Subjects should never be more than 255 chars
+    /// the first opening parenthesis in the subject line
+    /// ```txt
+    /// ### valid ###
+    /// type(scope)!: subject
+    /// #   ( -> <Some(4)>
+    /// type!: subject
+    /// <None>
+    /// type: subject()
+    /// # -> <None>
+    /// ### invalid ###
+    /// type ( scope ) ! : subject
+    /// #    ( -> <Some(5)>
+    /// type scope)!: subject
+    /// <None>
+    /// ```
     open_paren: Option<usize>,
+    /// the first closing parenthesis in the subject line.
+    /// ```txt
+    /// ### valid ###
+    /// type(scope)!: subject
+    /// #         ) -> <Some(9)>
+    /// type!: subject
+    /// # -> <None>
+    /// type: subject()
+    /// # -> <None>
+    /// ### invalid ###
+    /// type ( scope ) ! : subject
+    /// #            ) -> <Some(11)>
+    /// type scope)!: subject
+    /// <None>
+    /// ```
     close_paren: Option<usize>,
+    /// the first exclamation mark in the subject line *before* the colon.
+    /// ```txt
+    /// ### valid ###
+    /// type(scope)!: subject
+    /// #          ! -> <Some(10)>
+    /// type!: subject
+    /// #   ! -> <Some(3)>
+    /// type: subject!()
+    /// # -> <None>
     bang: Option<usize>,
     colon: Option<usize>,
     space: Option<usize>,
@@ -142,41 +182,80 @@ impl CCIndices {
     /// parse a conventional commit header into its byte indices
     /// ```txt
     /// type(scope)!: subject
-    ///     (    )!:
+    ///     (     )!:_
     /// ```
     fn new(header: &str) -> Self {
         let mut indices = Self::default();
-        let pre = if let Some(colon) = header.find(':') {
-            indices.colon = Some(colon);
+        // type(scope)!: subject
+        // type(scope)! subject
+        let prefix = if let Some(colon) = header.find(':') {
+            indices.colon = header.chars().position(|c| c == ':');
             &header[..colon]
         } else {
             header
         };
 
-        indices.bang = pre.find('!');
-        if let Some(open_paren) = pre.find(':') {
-            indices.open_paren = Some(open_paren);
-            let mid = &pre[open_paren..];
-            let start = open_paren;
-            indices.close_paren = mid.find(')').map(|i| i + start);
+        // type(scope)!
+        // type(scope) subject
+        let prefix = if let Some(bang) = prefix.find('!') {
+            indices.bang = prefix.chars().position(|c| c == '!');
+            &prefix[..bang]
+        } else {
+            prefix
+        };
 
-            let (mid, start) = if let Some(close_paren) = indices.close_paren {
-                (&pre[close_paren..], close_paren)
-            } else {
-                (mid, start)
-            };
+        // type(scope
+        // type(scope subject
+        let prefix = if let Some(close_paren) = prefix.find(')') {
+            indices.close_paren = prefix.chars().position(|c| c == ')');
+            &prefix[..close_paren]
+        } else {
+            prefix
+        };
 
-            indices.space = mid.find(' ').map(|i| i + start);
-        }
+        // type(
+        // type scope subject
+        // type subject
+        let prefix = if let Some(open_paren) = prefix.find('(') {
+            indices.open_paren = prefix.chars().position(|c| c == '(');
+            &prefix[..open_paren]
+        } else {
+            prefix
+        };
+
+        // type scope subject
+        // type subject
+        indices.space = prefix.chars().position(|c| c == ' ');
         indices
     }
-    /// returns the byte index of the end of the type:
+    /// returns the char index of the end of the type:
     /// ```txt
     /// type(scope): <subject>
     ///    ^
     /// ```
     fn type_end(&self) -> Option<usize> {
         self.open_paren.or(self.bang).or(self.colon).or(self.space)
+    }
+
+    /// returns the char index of the end of the scope:
+    /// ```txt
+    /// type(scope): <subject>
+    ///           ^
+    /// type(scope: <subject>
+    /// #        ^
+    /// type: <subject>
+    /// # -> <None>
+    /// ```
+    fn scope_end(&self) -> Option<usize> {
+        if self.close_paren.is_none() && self.open_paren.is_none() {
+            return None;
+        } else {
+            self.close_paren.or(self.bang).or(self.colon).or(self.space)
+        }
+    }
+
+    fn prefix_end(&self) -> Option<usize> {
+        self.colon.or(self.bang).or(self.close_paren).or(self.space)
     }
     /// returns the byte range of the scope in the cc subject
     /// ```txt
@@ -229,18 +308,9 @@ impl Bitmask {
 
 struct SyntaxTree {
     code: crop::Rope,
-    message_lines: Bitmask,
-    subject_line_index: Option<usize>,
+    parser: tree_sitter::Parser,
+    tree: tree_sitter::Tree,
     cc_indices: CCIndices,
-}
-/// find the char index of the first instance of a character in a string
-fn find_index(s: &str, ch: char) -> Option<usize> {
-    for (i, c) in s.char_indices() {
-        if c == ch {
-            return Some(i);
-        }
-    }
-    None
 }
 
 /// given a line/column position in the text, return the the byte offset of the position
@@ -251,95 +321,163 @@ fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
     let char_index = pos.character as usize;
     for (i, line) in text.raw_lines().enumerate() {
         // includes line breaks
-        if i == line_index {
-            // don't include the target line
-            break;
-        }
-        byte_offset += line.byte_len();
-    }
-    for (i, c) in text.line(line_index).chars().enumerate() {
-        byte_offset += c.len_utf8();
-        // include the target char in the byte-offset
-        if i == char_index {
-            break;
+        if i < line_index {
+            byte_offset += line.byte_len();
+            continue;
+        } else {
+            for (i, c) in line.chars().enumerate() {
+                if i == char_index {
+                    // don't include the target char in the byte-offset
+                    break;
+                }
+                byte_offset += c.len_utf8();
+            }
         }
     }
     Some(byte_offset)
 }
 
-fn find_subject_line_index(message_lines: &Bitmask) -> Option<usize> {
-    message_lines.iter_indices().next()
-}
-
-fn find_message_lines(code: &Rope) -> Bitmask {
-    let mut message_lines = Bitmask::new(code.line_len());
-    for (i, line) in code.lines().enumerate() {
-        if line.bytes().next() == Some(b'#') {
-        } else {
-            message_lines.set(i);
+fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
+    for (number, line) in code.lines().enumerate() {
+        if line.bytes().next() != Some(b'#') {
+            return Some((line, number));
         }
     }
-    message_lines
+    None
+}
+
+/// transform a line/column position into a tree-sitter Point struct
+fn to_point(p: lsp_types::Position) -> tree_sitter::Point {
+    tree_sitter::Point {
+        row: p.line as usize,
+        column: p.character as usize,
+    }
 }
 
 impl SyntaxTree {
-    fn new(code: String) -> Self {
-        let code = crop::Rope::from(code);
-
-        let message_lines = find_message_lines(&code);
-        let subject_line_index = find_subject_line_index(&message_lines);
-        let cc_indices = if let Some(subject_line_index) = subject_line_index {
-            CCIndices::new(code.line(subject_line_index).to_string().as_str())
+    fn new(text: String) -> Self {
+        let code = crop::Rope::from(text.clone());
+        let cc_indices = if let Some((subject, _)) = get_subject_line(&code) {
+            CCIndices::new(subject.to_string().as_str())
         } else {
             CCIndices::default()
         };
+        let mut parser = {
+            let language = tree_sitter_gitcommit::language();
+            let mut parser = tree_sitter::Parser::new();
+            parser.set_language(language).unwrap();
+            parser
+        };
+        let tree = parser.parse(&text, None).unwrap();
         SyntaxTree {
             code,
-            message_lines,
-            subject_line_index,
+            parser,
+            tree,
             cc_indices,
         }
     }
     fn recompute_indices(&mut self) {
-        self.cc_indices = if let Some(subject_line_index) = self.subject_line_index {
-            CCIndices::new(self.code.line(subject_line_index).to_string().as_str())
+        self.cc_indices = if let Some((subject, _)) = get_subject_line(&self.code) {
+            CCIndices::new(subject.to_string().as_str())
         } else {
             CCIndices::default()
         };
     }
+    fn get_ts_subject_line(&self) -> Option<tree_sitter::Node> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let names = SUBJECT_QUERY.capture_names();
+        let code = self.code.to_string();
+        let matches = cursor.matches(&SUBJECT_QUERY, self.tree.root_node(), code.as_bytes());
+        for m in matches {
+            for c in m.captures {
+                let name = names[c.index as usize].as_str();
+                match name {
+                    "subject" => {
+                        return Some(c.node);
+                    }
+                    _ => {
+                        continue;
+                    }
+                }
+            }
+        }
+        None
+    }
+    fn get_subject_line_number(&self) -> usize {
+        if let Some(node) = self.get_ts_subject_line() {
+            return node.start_position().row;
+        }
+        if let Some((_, number)) = get_subject_line(&self.code) {
+            return number;
+        }
+        // TODO: handle situation where all the lines are comments
+        0
+    }
+
     fn edit(&mut self, edits: &[TextDocumentContentChangeEvent]) -> &mut Self {
         for edit in edits {
+            debug_assert!(edit.range.is_some(), "range is none");
+            if edit.range.is_none() {
+                continue;
+            }
             let range = edit.range.unwrap();
             let offset = find_byte_offset(&self.code, range.start);
             debug_assert!(
                 offset.is_some(),
-                "failed to find offset for {:?}",
+                "failed to find start byte-offset for {:?}",
                 range.start
             );
             let start_byte = offset.unwrap();
-            let end_byte = find_byte_offset(&self.code, range.end).unwrap();
+            let end_byte = {
+                let end_byte = find_byte_offset(&self.code, range.end);
+                debug_assert!(
+                    end_byte.is_some(),
+                    "failed to find ending byte-offset for {:?}",
+                    range.end
+                );
+                end_byte.unwrap()
+            };
+            eprintln!("start..end byte: {}..{}", start_byte, end_byte);
             self.code.replace(start_byte..end_byte, &edit.text);
-
-            // update the semantic ranges --------------------------------------
-            // do a complete refresh of the bitmasks for simplicity
-            self.update_line_bitmasks();
-            self.subject_line_index = find_subject_line_index(&self.message_lines);
-            if let Some(subject_line_index) = self.subject_line_index {
-                if range.start.line as usize <= subject_line_index
-                    && range.end.line as usize >= subject_line_index
-                {
-                    // also completely refresh the cc indices
-                    self.recompute_indices();
+            eprintln!("new code:\n{}", self.code.to_string());
+            let new_end_position = match edit.text.rfind('\n') {
+                Some(ind) => {
+                    let num_newlines = edit.text.bytes().filter(|&c| c == b'\n').count();
+                    tree_sitter::Point {
+                        row: range.start.line as usize + num_newlines,
+                        column: edit.text.len() - ind,
+                    }
                 }
+                None => tree_sitter::Point {
+                    row: range.end.line as usize,
+                    column: range.end.character as usize + edit.text.len(),
+                },
+            };
+            eprintln!("found end position, submitting edit");
+            self.tree.edit(&tree_sitter::InputEdit {
+                start_byte,
+                old_end_byte: end_byte,
+                new_end_byte: start_byte + edit.text.len(),
+                start_position: to_point(range.start),
+                old_end_position: to_point(range.end),
+                new_end_position,
+            });
+            eprintln!("parsing");
+            {
+                // update the semantic ranges --------------------------------------
+                let prev_tree = &self.tree;
+                self.tree = self
+                    .parser
+                    .parse(&(self.code.to_string()), Some(prev_tree))
+                    .unwrap();
+                eprintln!("{}", &self.tree.root_node().to_sexp());
+                // TODO: detect if the subject line changed.
+                // HACK: for now, just recompute the indices
+                self.recompute_indices();
             }
         }
 
         self
-    }
-
-    fn update_line_bitmasks(&mut self) {
-        let message_lines = find_message_lines(&self.code);
-        self.message_lines = message_lines;
     }
 }
 
@@ -571,73 +709,45 @@ impl Server {
             "completion position: line {}, column {}",
             &position.line, &position.character
         );
-        let code = self.syntax_tree.code.line(position.line as usize);
-        eprintln!("line_text:\n\t{}", code);
+        eprintln!(
+            "line_text:\n\t{}",
+            self.syntax_tree.code.line(position.line as usize)
+        );
         eprintln!("\t{}^", " ".repeat(position.character as usize));
-        // let mut result: lsp_types::CompletionList = lsp_types::CompletionList {
-        //     is_incomplete: false,
-        //     items: vec![],
-        // };
-        if let Some(subject_line) = self.syntax_tree.subject_line_index {}
-        if self.syntax_tree.subject_line_index.is_none() {
-            // no subject line -- no completions
-        } else if position.line as usize == self.syntax_tree.subject_line_index.unwrap_or(0) {
+
+        let mut result = vec![];
+        let character_index = position.character as usize;
+        if position.line as usize == self.syntax_tree.get_subject_line_number() {
             // consider completions for the cc type, scope
-            let character = position.character as usize;
-            // FIXME: convert byte -> char indices
-            if self.syntax_tree.cc_indices.colon.is_none()
-                || self.syntax_tree.cc_indices.colon.unwrap() > character
-            {
-                if let Some(open_paren) = self.syntax_tree.cc_indices.open_paren {
-                    if open_paren > character {
-                        // consider completions for the cc type
-                    } else if open_paren < character {
-                        // consider completions for the scope
-                    } else {
-                        // at the open paren; no completions
-                    }
-                }
+            if character_index < self.syntax_tree.cc_indices.type_end().unwrap_or(0) {
+                // handle type completions
+                eprintln!("type completions");
+            } else if character_index < self.syntax_tree.cc_indices.scope_end().unwrap_or(0) {
+                // handle scope completions
+                eprintln!("scope completions");
+            } else if character_index < self.syntax_tree.cc_indices.prefix_end().unwrap_or(0) {
+                // suggest either a bang or a colon
+                eprintln!("end of prefix completions?");
+            } else {
+                // in the message; no completions
+                eprintln!("message, no completions");
             }
         } else {
-            if self.syntax_tree.message_lines.get(position.line as usize) {
-                // the line is commented -- no completions
-            } else {
-                // this is a message line
-                // TODO: DCO, other trailer completions?
+            let line = self.syntax_tree.code.line(position.line as usize); // panics if line is out of bounds
+            if let Some(c) = line.chars().next() {
+                if c == '#' {
+                    // this is a commented line
+                    // no completions
+                } else {
+                    // this is a message line
+                    // completions for BREAKING CHANGE:
+                }
             }
         }
 
-        if position.line == 0 {
-            // consider completions for the cc type, scope
-            // if position.character as usize < self.syntax_tree.cc_indices.colon
-            //     || self.syntax_tree.cc_indices.colon == 0
-            // {
-            //     if self.syntax_tree.cc_indices.open_paren >= self.syntax_tree.cc_indices.close_paren
-            //     {
-            //         // either we're missing a scope or there's a typo. Either way,
-            //     } else if position.character < self.syntax_tree.cc_indices.open_paren {
-            //         // consider completions for the cc type
-            //         // TODO: handle typos like "typescope): ..."
-            //         // TODO: handle typos
-            //         let prompt = &line_text[0..&self.syntax_tree.cc_indices.open_paren];
-            //     } else if position.character < self.syntax_tree.cc_indices.close_paren {
-            //         // consider completions for the cc scope
-            //     }
-            // } else {
-            // }
-
-            // (source (ERROR))
-            // (source (subject (prefix (type) (scope))) (...))
-            // let response: Response = Response {
-            //     id: id.clone(),
-            //     result: Some(serde_json::Value::Null),
-            //     error: None,
-            // };
-            // return Ok(response);
-        }
         let result = lsp_types::CompletionList {
             is_incomplete: false,
-            items: vec![],
+            items: result,
         };
         let response: Response = Response {
             id: id.clone(),

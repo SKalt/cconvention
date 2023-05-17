@@ -2,9 +2,13 @@
 /// provide a "Semantic Tokens" API that can be used to provide syntax highlighting.
 use std::{collections::HashMap, error::Error};
 
+use super::LANGUAGE;
 use lsp_types::SemanticToken;
 
 lazy_static! {
+    static ref HIGHLIGHTS_QUERY: tree_sitter::Query = {
+        tree_sitter::Query::new(LANGUAGE.clone(), tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap()
+    };
     pub static ref SYNTAX_TOKEN_LEGEND: Vec<&'static str> = vec![
         "comment",
         "error",
@@ -33,6 +37,72 @@ pub(crate) fn handle_all_tokens(
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
     // eprintln!("params: {:?}", params);
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
+    // let bytes = ;
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let code = syntax_tree.code.to_string();
+    let matches = cursor.matches(
+        &HIGHLIGHTS_QUERY,
+        syntax_tree.tree.root_node(),
+        code.as_bytes(),
+    );
+    // TODO: send subject line tokenization from syntax_tree.cc_indices
+    let names = HIGHLIGHTS_QUERY.capture_names();
     let mut tokens: Vec<lsp_types::SemanticToken> = Vec::new();
+    let mut line: u32 = 0;
+    let mut start: u32 = 0;
+    for m in matches {
+        for c in m.captures {
+            let capture_name = names[c.index as usize].as_str();
+            // TODO: handle if the client doesn't support overlapping tokens
+            match capture_name {
+                "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
+                other => {
+                    // eprintln!("capture::<{}>", other);
+                }
+            };
+            // let text = c.node.utf8_text(bytes).unwrap();
+            let range = c.node.range();
+            let start_line: u32 = range.start_point.row.try_into().unwrap();
+            if start_line > line {
+                start = 0;
+            };
+            let delta_line: u32 = start_line - line;
+            let delta_start: u32 = {
+                let token_start: u32 = range.start_point.column.try_into().unwrap();
+                // eprintln!("token_start: {}; start {}", token_start, start);
+                if token_start == 0 {
+                    0
+                } else {
+                    token_start - start
+                }
+            };
+            line = range.end_point.row.try_into().unwrap();
+            start = range.end_point.column.try_into().unwrap();
+
+            let token_type: u32 = *SYNTAX_TOKEN_SCOPES.get(capture_name).unwrap();
+            let token = lsp_types::SemanticToken {
+                delta_line,
+                delta_start,
+                length: (range.end_point.column - range.start_point.column)
+                    .try_into()
+                    .unwrap(),
+                token_type,
+                token_modifiers_bitset: 0,
+            };
+
+            tokens.push(token);
+            // eprintln!(
+            //     "capture::<{}> '{}' ({},{})-({},{}) dL{} dS{}",
+            //     capture_name,
+            //     text,
+            //     range.start_point.row,
+            //     range.start_point.column,
+            //     range.end_point.row,
+            //     range.end_point.column,
+            //     token.delta_line,
+            //     token.delta_start
+            // );
+        }
+    }
     Ok(tokens)
 }
