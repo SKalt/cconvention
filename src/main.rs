@@ -1,12 +1,12 @@
 use crop::{self, Rope, RopeSlice};
-use lsp_server::{self, Message, RequestId, Response};
+use lsp_server::{self, Message, Notification, RequestId, Response};
 use lsp_types::request::{self, RangeFormatting, SemanticTokensFullRequest, SemanticTokensRefresh};
 use lsp_types::{
-    self, CodeActionParams, CompletionItem, CompletionParams, DidOpenTextDocumentParams,
-    DocumentHighlightParams, DocumentLinkParams, DocumentOnTypeFormattingParams,
-    DocumentRangeFormattingParams, HoverParams, InitializeParams, InitializeResult, Position,
-    SelectionRangeParams, SemanticTokenModifier, SemanticTokensLegend, ServerInfo,
-    TextDocumentContentChangeEvent, WillSaveTextDocumentParams,
+    self, CodeActionParams, CompletionItem, CompletionParams, Diagnostic,
+    DidOpenTextDocumentParams, DocumentHighlightParams, DocumentLinkParams,
+    DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeParams,
+    InitializeResult, Position, SelectionRangeParams, SemanticTokenModifier, SemanticTokensLegend,
+    ServerInfo, TextDocumentContentChangeEvent, Url, WillSaveTextDocumentParams,
 };
 use lsp_types::{CodeActionKind, DidChangeTextDocumentParams};
 use std::error::Error;
@@ -129,20 +129,20 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
             },
             completion_item: None,
         }),
-        code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
-            lsp_types::CodeActionOptions {
-                code_action_kinds: Some(vec![
-                    CodeActionKind::EMPTY,
-                    CodeActionKind::QUICKFIX,
-                    CodeActionKind::REFACTOR,
-                    CodeActionKind::SOURCE_FIX_ALL,
-                ]),
-                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-                    work_done_progress: None,
-                },
-                resolve_provider: None,
-            },
-        )),
+        // code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
+        //     lsp_types::CodeActionOptions {
+        //         code_action_kinds: Some(vec![
+        //             CodeActionKind::EMPTY,
+        //             CodeActionKind::QUICKFIX,
+        //             CodeActionKind::REFACTOR,
+        //             CodeActionKind::SOURCE_FIX_ALL,
+        //         ]),
+        //         work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+        //             work_done_progress: None,
+        //         },
+        //         resolve_provider: None,
+        //     },
+        // )),
         // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_formatting
         document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
         // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_rangeFormatting
@@ -630,6 +630,49 @@ impl SyntaxTree {
 
         self
     }
+
+    fn get_diagnostics(&self) -> Vec<Diagnostic> {
+        let mut result = vec![];
+        // subject line length
+        if let Some((subject_line, subject_line_number)) = self._get_subject_line_with_number() {
+            // validation of subject line
+            let n_chars = subject_line.chars().count();
+            let cutoff = 50;
+            if n_chars > cutoff {
+                // validate the subject line length
+                result.push(Diagnostic {
+                    range: lsp_types::Range {
+                        start: Position {
+                            line: subject_line_number as u32,
+                            character: cutoff as u32,
+                        },
+                        end: Position {
+                            line: subject_line_number as u32,
+                            character: n_chars as u32,
+                        },
+                    },
+                    severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+                    code: None,
+                    source: Some("git-commit language server".to_string()),
+                    message: format!("subject line is > {cutoff} characters", cutoff = cutoff),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                    code_description: None,
+                });
+            }
+            // TODO: correct missing close-paren
+            // TODO: correct missing open-paren?
+            // TODO: correct missing colon
+            // TODO: correct missing space after colon
+        };
+        { // validation of message body
+        }
+        { // trailer misspellings
+        }
+
+        result
+    }
 }
 
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
@@ -768,18 +811,37 @@ impl Server {
 
         Ok(ServerLoopAction::Continue)
     }
+    fn publish_diagnostics(&self, uri: Url, diagnostics: Vec<lsp_types::Diagnostic>) {
+        eprintln!("publishing diagnostics: {:?}", diagnostics);
+        let params = lsp_types::PublishDiagnosticsParams {
+            uri,
+            diagnostics,
+            version: None,
+        };
+        self.connection
+            .sender
+            .send(Message::Notification(Notification {
+                method: <lsp_types::notification::PublishDiagnostics as lsp_types::notification::Notification>::METHOD.to_owned(),
+                params: serde_json::to_value(params).unwrap(),
+            }))
+            .unwrap();
+    }
+
     fn handle_open(
         &mut self,
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         self.syntax_tree = SyntaxTree::new(params.text_document.text);
+        self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
         // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
         &mut self,
-        _: lsp_types::DidCloseTextDocumentParams,
+        params: lsp_types::DidCloseTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
+        // clear the diagnostics for the document
+        self.publish_diagnostics(params.text_document.uri, vec![]);
         Ok(ServerLoopAction::Break)
     }
     fn handle_did_change(
@@ -788,6 +850,8 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // let uri = params.text_document.uri;
         self.syntax_tree.edit(&params.content_changes);
+        self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
+        // self.connection.sender.
         // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
@@ -819,8 +883,6 @@ impl Server {
         // handle!(SemanticTokensRefresh => handle_token_refresh);
 
         handle!(Completion => handle_completion);
-
-        // handle!(DocumentHighlightRequest => handle_document_highlight);
         // handle!(DocumentLinkRequest => handle_doc_link_request);
         // sent from the client to the server to compute commands for a given text document and range.
         // The request is triggered when the user moves the cursor into a problem marker
@@ -846,8 +908,6 @@ impl Server {
         };
         eprintln!("response: {:?}", response);
         Ok(response)
-        // FIXME: figure out how to return a Box<dyn Error + Send + Sync>
-        // panic!("unhandled request: {:?}", request.method)
     }
     fn handle_code_action(
         // TODO: implement
@@ -855,6 +915,7 @@ impl Server {
         id: &RequestId,
         params: CodeActionParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        //
         todo!("code_action")
     }
     fn handle_completion(
@@ -992,21 +1053,6 @@ impl Server {
         params: HoverParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         todo!("hover")
-    }
-    fn handle_document_highlight(
-        //  usually highlights all references to the symbol scoped to this file.
-        &self,
-        id: &RequestId,
-        params: DocumentHighlightParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        eprintln!("params: {:?}", params);
-        // let response: lsp_types::DocumentHighlight
-        let response: Response = Response {
-            id: id.clone(),
-            result: Some(serde_json::Value::Null),
-            error: None,
-        };
-        todo!("document_highlight")
     }
     fn handle_token_full(
         &mut self,
