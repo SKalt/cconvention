@@ -32,7 +32,7 @@
       {
         "id": "git-commit",
         "filenames": [
-          "GIT_COMMIT_EDITMSG"
+          "COMMIT_EDITMSG"
         ]
       }
     ],
