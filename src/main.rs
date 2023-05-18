@@ -1,8 +1,9 @@
 use crop::{self, Rope, RopeSlice};
 use lsp_server::{self, Message, Notification, RequestId, Response};
+use lsp_types::notification::DidSaveTextDocument;
 use lsp_types::request::{self, RangeFormatting, SemanticTokensFullRequest, SemanticTokensRefresh};
 use lsp_types::{
-    self, CodeActionParams, CompletionItem, CompletionParams, Diagnostic,
+    self, CodeActionParams, CompletionItem, CompletionParams, Diagnostic, DiagnosticSeverity,
     DidOpenTextDocumentParams, DocumentHighlightParams, DocumentLinkParams,
     DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeParams,
     InitializeResult, Position, SelectionRangeParams, SemanticTokenModifier, SemanticTokensLegend,
@@ -112,11 +113,15 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
                 change: Some(lsp_types::TextDocumentSyncKind::INCREMENTAL),
                 will_save: None,
                 will_save_wait_until: None,
-                save: None,
+                save: Some(lsp_types::TextDocumentSyncSaveOptions::SaveOptions(
+                    lsp_types::SaveOptions {
+                        include_text: Some(true),
+                    },
+                )),
             },
         )),
         hover_provider: None,
-        // FIXME: provide hover
+        // FIXME: provide hover info about types, scopes
         // hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         // TODO: provide selection range
         // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
@@ -152,6 +157,7 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
             first_trigger_character: "\n".to_string(),
             more_trigger_character: None,
         }),
+
         document_link_provider: None,
         // TODO: use the tree-sitter parser to find links to affected files
         // document_link_provider: Some(lsp_types::DocumentLinkOptions {
@@ -192,6 +198,12 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StrIndex {
+    byte: u8,
+    char: u8,
+}
+
 /// char indices of significant characters in a conventional commit header.
 /// Used to parse the header into its constituent parts and to find relevant completions.
 #[derive(Debug, Default, Clone)]
@@ -214,7 +226,7 @@ struct CCIndices {
     /// type scope)!: subject
     /// <None>
     /// ```
-    open_paren: Option<usize>,
+    open_paren: Option<StrIndex>,
     /// the first closing parenthesis in the subject line.
     /// ```txt
     /// ### valid ###
@@ -230,7 +242,7 @@ struct CCIndices {
     /// type scope)!: subject
     /// <None>
     /// ```
-    close_paren: Option<usize>,
+    close_paren: Option<StrIndex>,
     /// the first exclamation mark in the subject line *before* the colon.
     /// ```txt
     /// ### valid ###
@@ -240,9 +252,9 @@ struct CCIndices {
     /// #   ! -> <Some(3)>
     /// type: subject!()
     /// # -> <None>
-    bang: Option<usize>,
-    colon: Option<usize>,
-    space: Option<usize>,
+    bang: Option<StrIndex>,
+    colon: Option<StrIndex>,
+    space: Option<StrIndex>,
 }
 impl CCIndices {
     /// parse a conventional commit header into its byte indices
@@ -258,7 +270,11 @@ impl CCIndices {
         // type(scope)!: subject
         // type(scope)! subject
         let prefix = if let Some(colon) = line.find(':') {
-            indices.colon = line.chars().position(|c| c == ':');
+            let colon_index = StrIndex {
+                byte: colon.try_into().unwrap(),
+                char: line[..colon].chars().count().try_into().unwrap(),
+            };
+            indices.colon = Some(colon_index);
             &line[..colon]
         } else {
             line
@@ -267,8 +283,13 @@ impl CCIndices {
         // type(scope)!
         // type(scope) subject
         let prefix = if let Some(bang) = prefix.find('!') {
-            indices.bang = prefix.chars().position(|c| c == '!');
-            &prefix[..bang]
+            let prefix = &prefix[..bang];
+            let bang_index = StrIndex {
+                byte: bang.try_into().unwrap(),
+                char: prefix.chars().count().try_into().unwrap(),
+            };
+            indices.bang = Some(bang_index);
+            prefix
         } else {
             prefix
         };
@@ -276,8 +297,13 @@ impl CCIndices {
         // type(scope
         // type(scope subject
         let prefix = if let Some(close_paren) = prefix.find(')') {
-            indices.close_paren = prefix.chars().position(|c| c == ')');
-            &prefix[..close_paren]
+            let prefix = &prefix[..close_paren];
+            let close_paren_index = StrIndex {
+                byte: close_paren.try_into().unwrap(),
+                char: prefix.chars().count().try_into().unwrap(),
+            };
+            indices.close_paren = Some(close_paren_index);
+            prefix
         } else {
             prefix
         };
@@ -286,15 +312,29 @@ impl CCIndices {
         // type scope subject
         // type subject
         let prefix = if let Some(open_paren) = prefix.find('(') {
-            indices.open_paren = prefix.chars().position(|c| c == '(');
-            &prefix[..open_paren]
+            let prefix = &prefix[..open_paren];
+            let open_paren_index = StrIndex {
+                byte: open_paren.try_into().unwrap(),
+                char: prefix.chars().count().try_into().unwrap(),
+            };
+
+            indices.open_paren = Some(open_paren_index);
+            prefix
         } else {
             prefix
         };
 
         // type scope subject
         // type subject
-        indices.space = prefix.chars().position(|c| c == ' ');
+        if let Some(space) = prefix.find(' ') {
+            let prefix = &prefix[..space];
+            let space_index = StrIndex {
+                byte: space.try_into().unwrap(),
+                char: prefix.chars().count().try_into().unwrap(),
+            };
+
+            indices.space = Some(space_index);
+        }
         indices
     }
     /// returns the char index of the end of the type, NON-INCLUSIVE:
@@ -302,32 +342,70 @@ impl CCIndices {
     /// type(scope): <subject>
     ///    ^
     /// ```
-    fn type_end(&self) -> usize {
+    fn type_end(&self) -> StrIndex {
         self.open_paren
             .or(self.bang)
             .or(self.colon)
             .or(self.space)
-            .unwrap_or_else(|| self.line.chars().count())
+            .unwrap_or_else(|| StrIndex {
+                char: self.line.chars().count().try_into().unwrap(),
+                byte: self.line.len().try_into().unwrap(),
+            })
     }
 
+    fn scope_start(&self) -> Option<StrIndex> {
+        if self.open_paren.is_none() && self.close_paren.is_none() {
+            return None;
+        } else {
+            return self
+                .open_paren
+                .or(Some(self.type_end()))
+                .map(|i| self.next_char(i));
+        }
+    }
+    fn next_char(&self, index: StrIndex) -> StrIndex {
+        if let Some(c) = &self.line.as_str()[index.byte as usize..].chars().next() {
+            return StrIndex {
+                byte: index.byte + TryInto::<u8>::try_into(c.len_utf8()).unwrap(),
+                char: index.char + 1,
+            };
+        } else {
+            return index;
+        }
+    }
     /// returns the char index of the end of the scope:
     /// ```txt
     /// type(scope): <subject>
-    ///           ^
+    /// #         ^
+    /// type scope): <subject>
+    /// #         ^
     /// type(scope: <subject>
     /// #        ^
     /// type: <subject>
     /// # -> <None>
     /// ```
-    fn scope_end(&self) -> Option<usize> {
+    fn scope_end(&self) -> Option<StrIndex> {
         if self.close_paren.is_none() && self.open_paren.is_none() {
             return None;
         } else {
-            self.close_paren.or(self.bang).or(self.colon).or(self.space)
+            self.close_paren
+                // .map(|i| {
+                //     if let Some(c) = self.line.as_str()[i.byte as usize..].chars().next() {
+                //         return StrIndex {
+                //             byte: i.byte + TryInto::<u8>::try_into(c.len_utf8()).unwrap(),
+                //             char: i.char + 1,
+                //         };
+                //     } else {
+                //         return i;
+                //     };
+                // })
+                .or(self.bang)
+                .or(self.colon)
+                .or(self.space)
         }
     }
 
-    fn prefix_end(&self) -> Option<usize> {
+    fn prefix_end(&self) -> Option<StrIndex> {
         self.colon.or(self.bang).or(self.close_paren).or(self.space)
     }
 
@@ -341,40 +419,40 @@ impl CCIndices {
         let mut cursor = 0;
 
         eprint!("\t{}\n\t", self.line);
-        if let Some(open_paren) = self.open_paren {
-            while cursor < open_paren {
+        if let Some(open_paren) = &self.open_paren {
+            while cursor < open_paren.char {
                 cursor += 1;
                 eprint!(" ");
             }
             cursor += 1;
             eprint!("(");
         }
-        if let Some(close_paren) = self.close_paren {
-            while cursor < close_paren {
+        if let Some(close_paren) = &self.close_paren {
+            while cursor < close_paren.char {
                 cursor += 1;
                 eprint!(" ");
             }
             cursor += 1;
             eprint!(")");
         }
-        if let Some(bang) = self.bang {
-            while cursor < bang {
+        if let Some(bang) = &self.bang {
+            while cursor < bang.char {
                 cursor += 1;
                 eprint!(" ");
             }
             cursor += 1;
-            eprint!("!"); // HACK: relying on byte indices
+            eprint!("!");
         }
-        if let Some(colon) = self.colon {
-            while cursor < colon {
+        if let Some(colon) = &self.colon {
+            while cursor < colon.char {
                 cursor += 1;
                 eprint!(" ");
             }
             cursor += 1;
-            eprint!(":"); // HACK: relying on byte indices
+            eprint!(":");
         }
-        if let Some(space) = self.space {
-            while cursor < space {
+        if let Some(space) = &self.space {
+            while cursor < space.char {
                 cursor += 1;
                 eprint!(" ");
             }
@@ -390,49 +468,49 @@ impl CCIndices {
             return;
         }
         eprint!("\t{}\n\t", self.line);
-        let mut cursor = 0usize;
-        while cursor < self.type_end() {
+        let mut cursor = 0u8;
+        while cursor < self.type_end().char {
             cursor += 1;
             eprint!("t")
         }
-        if let Some(open_paren) = self.open_paren {
-            while cursor < open_paren {
+        if let Some(open_paren) = &self.open_paren {
+            while cursor < open_paren.char {
                 cursor += 1;
                 eprint!(" ")
             }
             cursor += 1;
             eprint!("(");
         }
-        while cursor < self.scope_end().unwrap_or(0) {
+        while cursor < self.scope_end().map(|i| i.char).unwrap_or(0) {
             cursor += 1;
             eprint!("s");
         }
-        if let Some(close_paren) = self.close_paren {
-            while cursor < close_paren {
+        if let Some(close_paren) = &self.close_paren {
+            while cursor < close_paren.char {
                 cursor += 1;
                 eprint!(" ")
             }
             cursor += 1;
             eprint!(")");
         }
-        if let Some(bang) = self.bang {
-            while cursor < bang {
+        if let Some(bang) = &self.bang {
+            while cursor < bang.char {
                 cursor += 1;
                 eprint!(" ")
             }
             cursor += 1;
             eprint!("!")
         }
-        if let Some(colon) = self.colon {
-            while cursor < colon {
+        if let Some(colon) = &self.colon {
+            while cursor < colon.char {
                 cursor += 1;
                 eprint!(" ")
             }
             cursor += 1;
             eprint!(":")
         }
-        if let Some(space) = self.space {
-            while cursor < space {
+        if let Some(space) = &self.space {
+            while cursor < space.char {
                 cursor += 1;
                 eprint!(" ")
             }
@@ -461,12 +539,15 @@ fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
             byte_offset += line.byte_len();
             continue;
         } else {
+            let line = line.to_string();
             for (i, c) in line.chars().enumerate() {
-                if i == char_index {
+                eprintln!("c: >{:?}<; offset: {}", c, byte_offset);
+                if i >= char_index {
                     // don't include the target char in the byte-offset
-                    break;
+                    return Some(byte_offset);
+                } else {
+                    byte_offset += c.len_utf8();
                 }
-                byte_offset += c.len_utf8();
             }
         }
     }
@@ -566,6 +647,7 @@ impl SyntaxTree {
     }
 
     fn edit(&mut self, edits: &[TextDocumentContentChangeEvent]) -> &mut Self {
+        // FIXME: sometimes deletions/bulk inserts cause duplicate characters to creep in
         for edit in edits {
             debug_assert!(edit.range.is_some(), "range is none");
             if edit.range.is_none() {
@@ -661,12 +743,210 @@ impl SyntaxTree {
                     code_description: None,
                 });
             }
-            // TODO: correct missing close-paren
-            // TODO: correct missing open-paren?
-            // TODO: correct missing colon
-            // TODO: correct missing space after colon
+            {
+                // lint for space in the type
+                let type_ = &subject_line[0..self.cc_indices.type_end().byte as usize];
+                eprintln!("type: >{:?}<", type_);
+                if type_.chars().any(|c| c.is_whitespace()) {
+                    result.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: subject_line_number as u32,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: subject_line_number as u32,
+                                character: self.cc_indices.type_end().char as u32,
+                            },
+                        },
+                        severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                        code: None,
+                        source: Some("git-commit language server".to_string()),
+                        message: format!("type contains whitespace"),
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                        code_description: None,
+                    });
+                }
+            }
+            {
+                // lint the scope, if any
+                if let Some(scope_end) = self.cc_indices.scope_end() {
+                    // there's a scope
+                    let scope_start = self.cc_indices.scope_start().unwrap();
+
+                    let scope = {
+                        let start_byte = scope_start.byte as usize; // TODO: use char index?
+                        &self.cc_indices.line[start_byte..scope_end.byte as usize]
+                    };
+                    eprintln!("scope: >{:?}<", scope);
+                    if self.cc_indices.open_paren.is_none() {
+                        result.push(Diagnostic {
+                            range: lsp_types::Range {
+                                start: Position {
+                                    line: subject_line_number as u32,
+                                    character: scope_start.char as u32,
+                                },
+                                end: Position {
+                                    line: subject_line_number as u32,
+                                    character: (scope_start.char + 1) as u32,
+                                },
+                            },
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            source: Some("git-commit language server".to_string()),
+                            message: "Missing opening parenthesis".to_string(),
+                            ..Default::default()
+                        })
+                    } else if self.cc_indices.close_paren.is_none() {
+                        result.push(Diagnostic {
+                            range: lsp_types::Range {
+                                start: Position {
+                                    line: subject_line_number as u32,
+                                    character: (scope_end.char - 1) as u32,
+                                },
+                                end: Position {
+                                    line: subject_line_number as u32,
+                                    character: (scope_end.char) as u32,
+                                },
+                            },
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            source: Some("git-commit language server".to_string()),
+                            message: "Missing closing parenthesis".to_string(),
+                            ..Default::default()
+                        });
+                    }
+                    if scope.chars().any(|c| c.is_whitespace()) {
+                        result.push(Diagnostic {
+                            range: lsp_types::Range {
+                                start: Position {
+                                    line: subject_line_number as u32,
+                                    character: self.cc_indices.type_end().char as u32,
+                                },
+                                end: Position {
+                                    line: subject_line_number as u32,
+                                    character: scope_end.char as u32,
+                                },
+                            },
+                            severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                            code: None,
+                            source: Some("git-commit language server".to_string()),
+                            message: format!("scope contains whitespace"),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                            code_description: None,
+                        });
+                    }
+                } else {
+                    // no scope
+                }
+            }
+            {
+                // lint the colon?
+                if let Some(colon) = self.cc_indices.colon {
+                    let start = self
+                        .cc_indices
+                        .scope_end()
+                        .map(|i| self.cc_indices.next_char(i))
+                        .unwrap_or_else(|| self.cc_indices.type_end());
+                    let span = &subject_line[start.byte as usize..colon.byte as usize];
+                    eprintln!("span: >{:?}<", span);
+                    for c in span.chars() {
+                        if c != '!' {
+                            result.push(Diagnostic {
+                                range: lsp_types::Range {
+                                    start: Position {
+                                        line: subject_line_number as u32,
+                                        character: start.char as u32,
+                                    },
+                                    end: Position {
+                                        line: subject_line_number as u32,
+                                        character: colon.char as u32,
+                                    },
+                                },
+                                severity: Some(DiagnosticSeverity::ERROR),
+                                source: Some("git-commit language server".to_string()),
+                                message: format!("Illegal character before colon: {:?}", c),
+                                ..Default::default()
+                            });
+                            break;
+                        }
+                    }
+                } else {
+                    let start = self
+                        .cc_indices
+                        .bang
+                        .or(self.cc_indices.close_paren)
+                        .map(|i| self.cc_indices.next_char(i))
+                        .unwrap_or_else(|| self.cc_indices.type_end());
+                    let end = self.cc_indices.next_char(start);
+                    let span = &subject_line[start.byte as usize..end.byte as usize];
+                    eprintln!("span: >{:?}<", span);
+
+                    result.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: subject_line_number as u32,
+                                character: start.char as u32,
+                            },
+                            end: Position {
+                                line: subject_line_number as u32,
+                                character: end.char as u32,
+                            },
+                        },
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        source: Some("git-commit language server".to_string()),
+                        message: "Missing colon".to_string(),
+                        ..Default::default()
+                    });
+                }
+            }
+            {
+                // TODO: correct missing space after colon
+                let start = self
+                    .cc_indices
+                    .colon
+                    .or(self.cc_indices.bang)
+                    .or(self.cc_indices.close_paren)
+                    .or_else(|| self.cc_indices.scope_end())
+                    .map(|i| self.cc_indices.next_char(i))
+                    .unwrap_or_else(|| self.cc_indices.type_end());
+                if !self.cc_indices.line.as_str()[start.byte as usize..]
+                    .chars()
+                    .next()
+                    .map(|c| c == ' ')
+                    .unwrap_or(false)
+                {
+                    let end = self.cc_indices.next_char(start);
+                    let span = &subject_line[start.byte as usize..end.byte as usize];
+                    eprintln!("span: >{:?}<", span);
+                    result.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: subject_line_number as u32,
+                                character: start.char as u32,
+                            },
+                            end: Position {
+                                line: subject_line_number as u32,
+                                character: end.char as u32,
+                            },
+                        },
+                        severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+                        code: None,
+                        source: Some("git-commit language server".to_string()),
+                        message: format!("Missing space after colon"),
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                        code_description: None,
+                    });
+                }
+            }
         };
         { // validation of message body
+             // TODO: if there's a body, check for a blank line after the subject
+             // TODO: check trailers are grouped and trailing
         }
         { // trailer misspellings
         }
@@ -805,7 +1085,7 @@ impl Server {
         // DidChangeConfiguration
         // WillSaveTextDocument
         handle!(DidCloseTextDocument => handle_close);
-        // DidSaveTextDocument
+        handle!(DidSaveTextDocument => handle_save);
         // DidChangeWatchedFiles
         // WorkDoneProgressCancel
 
@@ -853,6 +1133,18 @@ impl Server {
         self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
         // self.connection.sender.
         // TODO: log debug info
+        Ok(ServerLoopAction::Continue)
+    }
+    fn handle_save(
+        &mut self,
+        params: lsp_types::DidSaveTextDocumentParams,
+    ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
+        // in case incremental updates are messing up the text, try to refresh on-save
+        if let Some(text) = params.text {
+            eprintln!("refreshing syntax tree");
+            self.syntax_tree = SyntaxTree::new(text);
+            self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
+        }
         Ok(ServerLoopAction::Continue)
     }
 
@@ -941,14 +1233,28 @@ impl Server {
             self.syntax_tree.cc_indices.debug_indices();
             self.syntax_tree.cc_indices.debug_ranges();
             // Using <= since the cursor should still trigger completions if it's at the end of a range
-            if character_index <= self.syntax_tree.cc_indices.type_end() {
+            if character_index <= self.syntax_tree.cc_indices.type_end().char as usize {
                 // handle type completions
                 // TODO: allow configuration of types
                 result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
-            } else if character_index <= self.syntax_tree.cc_indices.scope_end().unwrap_or(0) {
+            } else if character_index
+                <= self
+                    .syntax_tree
+                    .cc_indices
+                    .scope_end()
+                    .map(|i| i.char)
+                    .unwrap_or(0) as usize
+            {
                 // TODO: handle scope completions
                 eprintln!("scope completions");
-            } else if character_index <= self.syntax_tree.cc_indices.prefix_end().unwrap_or(0) {
+            } else if character_index
+                <= self
+                    .syntax_tree
+                    .cc_indices
+                    .prefix_end()
+                    .map(|i| i.char)
+                    .unwrap_or(0) as usize
+            {
                 // TODO: suggest either a bang or a colon
             } else {
                 // in the subject message; no completions
@@ -972,7 +1278,7 @@ impl Server {
                         let breaking_change_match =
                             if prefix == &"BREAKING-CHANGE: "[0..character_index] {
                                 Some("BREAKING-CHANGE: ")
-                            } else if prefix == &"BREAKING CHANGE:"[0..character_index] {
+                            } else if prefix == &"BREAKING CHANGE: "[0..character_index] {
                                 Some("BREAKING CHANGE: ")
                             } else {
                                 None
