@@ -34,7 +34,6 @@ export async function activate(
       { scheme: "file", language: "git-commit" },
       { scheme: "file", pattern: "COMMIT_EDITMSG" },
     ],
-    // TODO: add synchronization options when we support config files
   };
   client = new LanguageClient(
     "gitConventionalCommitLs",

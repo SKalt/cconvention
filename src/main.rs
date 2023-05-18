@@ -777,7 +777,7 @@ impl SyntaxTree {
                     let scope_start = self.cc_indices.scope_start().unwrap();
 
                     let scope = {
-                        let start_byte = scope_start.byte as usize; // TODO: use char index?
+                        let start_byte = scope_start.byte as usize;
                         &self.cc_indices.line[start_byte..scope_end.byte as usize]
                     };
                     eprintln!("scope: >{:?}<", scope);
@@ -843,7 +843,7 @@ impl SyntaxTree {
                 }
             }
             {
-                // lint the colon?
+                // check the colon is present
                 if let Some(colon) = self.cc_indices.colon {
                     let start = self
                         .cc_indices
@@ -903,7 +903,7 @@ impl SyntaxTree {
                 }
             }
             {
-                // TODO: correct missing space after colon
+                // lint space after colon
                 let start = self
                     .cc_indices
                     .colon
@@ -1113,7 +1113,6 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         self.syntax_tree = SyntaxTree::new(params.text_document.text);
         self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
-        // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -1132,7 +1131,6 @@ impl Server {
         self.syntax_tree.edit(&params.content_changes);
         self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
         // self.connection.sender.
-        // TODO: log debug info
         Ok(ServerLoopAction::Continue)
     }
     fn handle_save(
