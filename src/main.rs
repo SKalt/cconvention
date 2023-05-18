@@ -15,7 +15,6 @@ use std::num;
 
 mod syntax_token_scopes;
 
-#[macro_use]
 extern crate serde_json;
 
 #[macro_use]
@@ -119,7 +118,8 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
         hover_provider: None,
         // FIXME: provide hover
         // hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
-        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
+        // TODO: provide selection range
+        // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         completion_provider: Some(lsp_types::CompletionOptions {
             resolve_provider: None,
             trigger_characters: None,
@@ -129,52 +129,46 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
             },
             completion_item: None,
         }),
-        signature_help_provider: None,
-        definition_provider: None,
-        type_definition_provider: None,
-        implementation_provider: None, // maybe later, for jumping into config
-        references_provider: None,
-        // document_highlight_provider: Some(lsp_types::OneOf::Left(true)), // <- TODO: figure out what this does
-        document_highlight_provider: None,
-        document_symbol_provider: None,
-        workspace_symbol_provider: None,
-        code_action_provider: None,
-        // FIXME: provide code actions
-        // code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
-        //     lsp_types::CodeActionOptions {
-        //         code_action_kinds: Some(vec![
-        //             CodeActionKind::REFACTOR,
-        //             CodeActionKind::SOURCE_FIX_ALL,
-        //         ]),
-        //         work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-        //             work_done_progress: None,
-        //         },
-        //         resolve_provider: None, // TODO: ???
-        //     },
-        // )),
-        code_lens_provider: None, // maybe later
+        code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
+            lsp_types::CodeActionOptions {
+                code_action_kinds: Some(vec![
+                    CodeActionKind::EMPTY,
+                    CodeActionKind::QUICKFIX,
+                    CodeActionKind::REFACTOR,
+                    CodeActionKind::SOURCE_FIX_ALL,
+                ]),
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: None,
+                },
+                resolve_provider: None,
+            },
+        )),
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_formatting
         document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_rangeFormatting
         document_range_formatting_provider: None,
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_onTypeFormatting
         document_on_type_formatting_provider: Some(lsp_types::DocumentOnTypeFormattingOptions {
             first_trigger_character: "\n".to_string(),
             more_trigger_character: None,
         }),
-        rename_provider: None,
         document_link_provider: None,
-        // FIXME: parse URIs via tree-sitter
+        // TODO: use the tree-sitter parser to find links to affected files
         // document_link_provider: Some(lsp_types::DocumentLinkOptions {
         //     resolve_provider: Some(true),
         //     work_done_progress_options: lsp_types::WorkDoneProgressOptions {
         //         work_done_progress: None,
         //     },
         // }),
-        color_provider: None,           // we'll never show a color picker
-        folding_range_provider: None,   // TODO: actually do this though
-        declaration_provider: None,     // maybe later, for jumping to configuration
+        folding_range_provider: None, // TODO: actually do this though
+        // TODO: jump from type/scope -> definition in config
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
+        // definition_provider: None,
+        declaration_provider: None, // maybe later, for jumping to configuration
         execute_command_provider: None, // maybe later for executing code blocks
-        workspace: None,                // maybe later, for git history inspection
-        call_hierarchy_provider: None,
+        workspace: None,            // maybe later, for git history inspection
         semantic_tokens_provider: Some(
+            // provides syntax highlighting!
             lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
                 lsp_types::SemanticTokensOptions {
                     work_done_progress_options: lsp_types::WorkDoneProgressOptions {
@@ -193,12 +187,8 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
                     full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
                 },
             ),
-        ), // <- provides syntax highlighting!
-        moniker_provider: None, // no real need to search for symbols in language indices
-        inline_value_provider: None,
-        inlay_hint_provider: None, // prefer dropdown, hover for providing info
-        linked_editing_range_provider: None,
-        experimental: None,
+        ),
+        ..Default::default()
     }
 }
 
@@ -771,7 +761,7 @@ impl Server {
         handle!(Exit => handle_exit);
         // DidChangeConfiguration
         // WillSaveTextDocument
-        // DidCloseTextDocument
+        handle!(DidCloseTextDocument => handle_close);
         // DidSaveTextDocument
         // DidChangeWatchedFiles
         // WorkDoneProgressCancel
@@ -785,6 +775,12 @@ impl Server {
         self.syntax_tree = SyntaxTree::new(params.text_document.text);
         // TODO: log debug info
         Ok(ServerLoopAction::Continue)
+    }
+    fn handle_close(
+        &mut self,
+        _: lsp_types::DidCloseTextDocumentParams,
+    ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
+        Ok(ServerLoopAction::Break)
     }
     fn handle_did_change(
         &mut self,
@@ -854,6 +850,7 @@ impl Server {
         // panic!("unhandled request: {:?}", request.method)
     }
     fn handle_code_action(
+        // TODO: implement
         &self,
         id: &RequestId,
         params: CodeActionParams,
@@ -885,17 +882,15 @@ impl Server {
             // Using <= since the cursor should still trigger completions if it's at the end of a range
             if character_index <= self.syntax_tree.cc_indices.type_end() {
                 // handle type completions
+                // TODO: allow configuration of types
                 result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
-                eprintln!("type completions");
             } else if character_index <= self.syntax_tree.cc_indices.scope_end().unwrap_or(0) {
                 // TODO: handle scope completions
                 eprintln!("scope completions");
             } else if character_index <= self.syntax_tree.cc_indices.prefix_end().unwrap_or(0) {
-                // suggest either a bang or a colon
-                eprintln!("end of prefix completions?");
+                // TODO: suggest either a bang or a colon
             } else {
-                // in the message; no completions
-                eprintln!("message, no completions");
+                // in the subject message; no completions
             }
         } else {
             let line = self
@@ -999,6 +994,7 @@ impl Server {
         todo!("hover")
     }
     fn handle_document_highlight(
+        //  usually highlights all references to the symbol scoped to this file.
         &self,
         id: &RequestId,
         params: DocumentHighlightParams,

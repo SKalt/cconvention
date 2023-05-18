@@ -45,7 +45,7 @@ pub(crate) fn handle_all_tokens(
         syntax_tree.tree.root_node(),
         code.as_bytes(),
     );
-    // TODO: send subject line tokenization from syntax_tree.cc_indices
+    // TODO: use subject line tokenization from syntax_tree.cc_indices
     let names = HIGHLIGHTS_QUERY.capture_names();
     let mut tokens: Vec<lsp_types::SemanticToken> = Vec::new();
     let mut line: u32 = 0;
@@ -60,7 +60,6 @@ pub(crate) fn handle_all_tokens(
                     // eprintln!("capture::<{}>", other);
                 }
             };
-            // let text = c.node.utf8_text(bytes).unwrap();
             let range = c.node.range();
             let start_line: u32 = range.start_point.row.try_into().unwrap();
             let delta_line: u32 = if start_line > line {
@@ -93,17 +92,6 @@ pub(crate) fn handle_all_tokens(
             };
 
             tokens.push(token);
-            // eprintln!(
-            //     "capture::<{}> '{}' ({},{})-({},{}) dL{} dS{}",
-            //     capture_name,
-            //     text,
-            //     range.start_point.row,
-            //     range.start_point.column,
-            //     range.end_point.row,
-            //     range.end_point.column,
-            //     token.delta_line,
-            //     token.delta_start
-            // );
         }
     }
     Ok(tokens)

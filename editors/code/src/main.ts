@@ -32,7 +32,6 @@ export async function activate(
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "git-commit" },
-      { scheme: "file", pattern: "GIT_COMMIT_EDITMSG" }, // TODO: check pattern
       { scheme: "file", pattern: "COMMIT_EDITMSG" },
     ],
     // TODO: add synchronization options when we support config files
