@@ -1,18 +1,14 @@
 use crop::{self, Rope, RopeSlice};
 use lsp_server::{self, Message, Notification, RequestId, Response};
-use lsp_types::notification::DidSaveTextDocument;
-use lsp_types::request::{self, RangeFormatting, SemanticTokensFullRequest, SemanticTokensRefresh};
+use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::{
     self, CodeActionParams, CompletionItem, CompletionParams, Diagnostic, DiagnosticSeverity,
-    DidOpenTextDocumentParams, DocumentHighlightParams, DocumentLinkParams,
-    DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeParams,
-    InitializeResult, Position, SelectionRangeParams, SemanticTokenModifier, SemanticTokensLegend,
-    ServerInfo, TextDocumentContentChangeEvent, Url, WillSaveTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentLinkParams, DocumentOnTypeFormattingParams,
+    DocumentRangeFormattingParams, HoverParams, InitializeResult, Position, SelectionRangeParams,
+    SemanticTokensLegend, ServerInfo, TextDocumentContentChangeEvent, Url,
+    WillSaveTextDocumentParams,
 };
-use lsp_types::{CodeActionKind, DidChangeTextDocumentParams};
 use std::error::Error;
-use std::f32::consts::E;
-use std::num;
 
 mod syntax_token_scopes;
 
@@ -21,6 +17,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
+const LINT_PROVIDER: &str = "git conventional commit language server";
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = get_capabilities();
     static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
@@ -207,9 +204,9 @@ struct StrIndex {
 /// char indices of significant characters in a conventional commit header.
 /// Used to parse the header into its constituent parts and to find relevant completions.
 #[derive(Debug, Default, Clone)]
-struct CCIndices {
+struct Subject {
     line: String,
-    line_number: Option<usize>,
+    line_number: usize,
     // TODO: compact to u8? Subjects should never be more than 255 chars
     /// the first opening parenthesis in the subject line
     /// ```txt
@@ -256,17 +253,17 @@ struct CCIndices {
     colon: Option<StrIndex>,
     space: Option<StrIndex>,
 }
-impl CCIndices {
+impl Subject {
     /// parse a conventional commit header into its byte indices
     /// ```txt
     /// type(scope)!: subject
     ///     (     )!:_
     /// ```
     fn new(header: String, line_number: usize) -> Self {
-        let mut indices = Self::default();
-        indices.line_number = Some(line_number);
-        indices.line = header;
-        let line = indices.line.as_str();
+        let mut subject = Self::default();
+        subject.line_number = line_number;
+        subject.line = header;
+        let line = subject.line.as_str();
         // type(scope)!: subject
         // type(scope)! subject
         let prefix = if let Some(colon) = line.find(':') {
@@ -274,7 +271,7 @@ impl CCIndices {
                 byte: colon.try_into().unwrap(),
                 char: line[..colon].chars().count().try_into().unwrap(),
             };
-            indices.colon = Some(colon_index);
+            subject.colon = Some(colon_index);
             &line[..colon]
         } else {
             line
@@ -288,7 +285,7 @@ impl CCIndices {
                 byte: bang.try_into().unwrap(),
                 char: prefix.chars().count().try_into().unwrap(),
             };
-            indices.bang = Some(bang_index);
+            subject.bang = Some(bang_index);
             prefix
         } else {
             prefix
@@ -302,7 +299,7 @@ impl CCIndices {
                 byte: close_paren.try_into().unwrap(),
                 char: prefix.chars().count().try_into().unwrap(),
             };
-            indices.close_paren = Some(close_paren_index);
+            subject.close_paren = Some(close_paren_index);
             prefix
         } else {
             prefix
@@ -318,7 +315,7 @@ impl CCIndices {
                 char: prefix.chars().count().try_into().unwrap(),
             };
 
-            indices.open_paren = Some(open_paren_index);
+            subject.open_paren = Some(open_paren_index);
             prefix
         } else {
             prefix
@@ -333,9 +330,9 @@ impl CCIndices {
                 char: prefix.chars().count().try_into().unwrap(),
             };
 
-            indices.space = Some(space_index);
+            subject.space = Some(space_index);
         }
-        indices
+        subject
     }
     /// returns the char index of the end of the type, NON-INCLUSIVE:
     /// ```txt
@@ -412,10 +409,6 @@ impl CCIndices {
     fn debug_indices(&self) {
         // TODO: ensure this function call is a no-op in release builds
         eprintln!("debugging indices");
-        if self.line_number.is_none() {
-            eprintln!("no subject line");
-            return;
-        }
         let mut cursor = 0;
 
         eprint!("\t{}\n\t", self.line);
@@ -463,10 +456,6 @@ impl CCIndices {
     fn debug_ranges(&self) {
         // TODO: ensure this function call is a no-op in release builds
         eprintln!("debugging ranges:");
-        if self.line_number.is_none() {
-            eprintln!("no subject line");
-            return;
-        }
         eprint!("\t{}\n\t", self.line);
         let mut cursor = 0u8;
         while cursor < self.type_end().char {
@@ -518,17 +507,247 @@ impl CCIndices {
         }
         eprintln!("\n");
     }
+
+    fn get_diagnostics(&self, cutoff: usize) -> Vec<Diagnostic> {
+        let mut lints = Vec::new();
+        let line = self.line.as_str();
+        {
+            // validate line length
+            let n_chars = line.chars().count();
+            if n_chars > cutoff {
+                // validate the subject line length
+                lints.push(Diagnostic {
+                    range: lsp_types::Range {
+                        start: Position {
+                            line: self.line_number as u32,
+                            character: cutoff as u32,
+                        },
+                        end: Position {
+                            line: self.line_number as u32,
+                            character: n_chars as u32,
+                        },
+                    },
+                    severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+                    code: None,
+                    source: Some(LINT_PROVIDER.to_string()),
+                    message: format!("subject line is > {cutoff} characters", cutoff = cutoff),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                    code_description: None,
+                });
+            }
+        };
+        {
+            // lint for space in the type
+            let type_ = &line[0..self.type_end().byte as usize];
+            eprintln!("type: >{:?}<", type_);
+            if type_.chars().any(|c| c.is_whitespace()) {
+                lints.push(Diagnostic {
+                    range: lsp_types::Range {
+                        start: Position {
+                            line: self.line_number as u32,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: self.line_number as u32,
+                            character: self.type_end().char as u32,
+                        },
+                    },
+                    severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                    code: None,
+                    source: Some(LINT_PROVIDER.to_string()),
+                    message: format!("type contains whitespace"),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                    code_description: None,
+                });
+            }
+        }
+        {
+            // lint the scope, if any
+            if let Some(scope_end) = self.scope_end() {
+                // there's a scope
+                let scope_start = self.scope_start().unwrap();
+
+                let scope = {
+                    let start_byte = scope_start.byte as usize;
+                    &line[start_byte..scope_end.byte as usize]
+                };
+                eprintln!("scope: >{:?}<", scope);
+                if self.open_paren.is_none() {
+                    lints.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: self.line_number as u32,
+                                character: scope_start.char as u32,
+                            },
+                            end: Position {
+                                line: self.line_number as u32,
+                                character: (scope_start.char + 1) as u32,
+                            },
+                        },
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        source: Some(LINT_PROVIDER.to_string()),
+                        message: "Missing opening parenthesis".to_string(),
+                        ..Default::default()
+                    })
+                } else if self.close_paren.is_none() {
+                    lints.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: self.line_number as u32,
+                                character: (scope_end.char - 1) as u32,
+                            },
+                            end: Position {
+                                line: self.line_number as u32,
+                                character: (scope_end.char) as u32,
+                            },
+                        },
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        source: Some(LINT_PROVIDER.to_string()),
+                        message: "Missing closing parenthesis".to_string(),
+                        ..Default::default()
+                    });
+                }
+                if scope.chars().any(|c| c.is_whitespace()) {
+                    lints.push(Diagnostic {
+                        range: lsp_types::Range {
+                            start: Position {
+                                line: self.line_number as u32,
+                                character: self.type_end().char as u32,
+                            },
+                            end: Position {
+                                line: self.line_number as u32,
+                                character: scope_end.char as u32,
+                            },
+                        },
+                        severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+                        code: None,
+                        source: Some(LINT_PROVIDER.to_string()),
+                        message: format!("scope contains whitespace"),
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                        code_description: None,
+                    });
+                }
+            } else {
+                // no scope
+            }
+        }
+        {
+            // check the colon is present
+            if let Some(colon) = self.colon {
+                let start = self
+                    .scope_end()
+                    .map(|i| self.next_char(i))
+                    .unwrap_or_else(|| self.type_end());
+                let span = &line[start.byte as usize..colon.byte as usize];
+                eprintln!("span: >{:?}<", span);
+                for c in span.chars() {
+                    if c != '!' {
+                        lints.push(Diagnostic {
+                            range: lsp_types::Range {
+                                start: Position {
+                                    line: self.line_number as u32,
+                                    character: start.char as u32,
+                                },
+                                end: Position {
+                                    line: self.line_number as u32,
+                                    character: colon.char as u32,
+                                },
+                            },
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            source: Some(LINT_PROVIDER.to_string()),
+                            message: format!("Illegal character before colon: {:?}", c),
+                            ..Default::default()
+                        });
+                        break;
+                    }
+                }
+            } else {
+                let start = self
+                    .bang
+                    .or(self.close_paren)
+                    .map(|i| self.next_char(i))
+                    .unwrap_or_else(|| self.type_end());
+                let end = self.next_char(start);
+                let span = &line[start.byte as usize..end.byte as usize];
+                eprintln!("span: >{:?}<", span);
+
+                lints.push(Diagnostic {
+                    range: lsp_types::Range {
+                        start: Position {
+                            line: self.line_number as u32,
+                            character: start.char as u32,
+                        },
+                        end: Position {
+                            line: self.line_number as u32,
+                            character: end.char as u32,
+                        },
+                    },
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    source: Some(LINT_PROVIDER.to_string()),
+                    message: "Missing colon".to_string(),
+                    ..Default::default()
+                });
+            }
+        }
+        {
+            // lint space after colon
+            let start = self
+                .colon
+                .or(self.bang)
+                .or(self.close_paren)
+                .or_else(|| self.scope_end())
+                .map(|i| self.next_char(i))
+                .unwrap_or_else(|| self.type_end());
+            if !self.line.as_str()[start.byte as usize..]
+                .chars()
+                .next()
+                .map(|c| c == ' ')
+                .unwrap_or(false)
+            {
+                let end = self.next_char(start);
+                let span = &line[start.byte as usize..end.byte as usize];
+                eprintln!("span: >{:?}<", span);
+                lints.push(Diagnostic {
+                    range: lsp_types::Range {
+                        start: Position {
+                            line: self.line_number as u32,
+                            character: start.char as u32,
+                        },
+                        end: Position {
+                            line: self.line_number as u32,
+                            character: end.char as u32,
+                        },
+                    },
+                    severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+                    code: None,
+                    source: Some(LINT_PROVIDER.to_string()),
+                    message: format!("Missing space after colon"),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                    code_description: None,
+                });
+            }
+        };
+        lints
+    }
 }
 
-struct SyntaxTree {
+struct GitCommitDocument {
     code: crop::Rope,
-    parser: tree_sitter::Parser,
-    tree: tree_sitter::Tree,
-    cc_indices: CCIndices,
+    parser: tree_sitter::Parser, // since the parser is stateful, it needs to be owned by the document
+    syntax_tree: tree_sitter::Tree,
+    subject: Option<Subject>,
 }
 
 /// given a line/column position in the text, return the the byte offset of the position
-fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
+fn find_byte_offset(text: &Rope, pos: Position) -> usize {
     let mut byte_offset: usize = 0;
     // only do the conversions once
     let line_index = pos.line as usize;
@@ -544,14 +763,14 @@ fn find_byte_offset(text: &Rope, pos: Position) -> Option<usize> {
                 eprintln!("c: >{:?}<; offset: {}", c, byte_offset);
                 if i >= char_index {
                     // don't include the target char in the byte-offset
-                    return Some(byte_offset);
+                    return byte_offset;
                 } else {
                     byte_offset += c.len_utf8();
                 }
             }
         }
     }
-    Some(byte_offset)
+    return byte_offset;
 }
 
 fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
@@ -571,34 +790,34 @@ fn to_point(p: lsp_types::Position) -> tree_sitter::Point {
     }
 }
 
-impl SyntaxTree {
+impl GitCommitDocument {
     fn new(text: String) -> Self {
         let code = crop::Rope::from(text.clone());
-        let cc_indices = if let Some((subject, line_number)) = get_subject_line(&code) {
-            CCIndices::new(subject.to_string(), line_number)
+        let subject = if let Some((subject, line_number)) = get_subject_line(&code) {
+            Some(Subject::new(subject.to_string(), line_number))
         } else {
-            CCIndices::default()
+            None
         };
         let mut parser = {
             let language = tree_sitter_gitcommit::language();
             let mut parser = tree_sitter::Parser::new();
             parser.set_language(language).unwrap();
+            parser.set_timeout_micros(500_000); // .5 seconds
             parser
         };
-        let tree = parser.parse(&text, None).unwrap();
-        SyntaxTree {
+        let syntax_tree = parser.parse(&text, None).unwrap();
+        GitCommitDocument {
             code,
             parser,
-            tree,
-            cc_indices,
+            syntax_tree,
+            subject,
         }
     }
     fn recompute_indices(&mut self) {
-        self.cc_indices = if let Some((subject, line_number)) = self._get_subject_line_with_number()
-        {
-            CCIndices::new(subject.to_string(), line_number)
+        self.subject = if let Some((subject, line_number)) = self._get_subject_line_with_number() {
+            Some(Subject::new(subject.to_string(), line_number))
         } else {
-            CCIndices::default()
+            None
         };
     }
     fn _get_subject_line_with_number(&self) -> Option<(String, usize)> {
@@ -619,7 +838,11 @@ impl SyntaxTree {
         let mut cursor = tree_sitter::QueryCursor::new();
         let names = SUBJECT_QUERY.capture_names();
         let code = self.code.to_string();
-        let matches = cursor.matches(&SUBJECT_QUERY, self.tree.root_node(), code.as_bytes());
+        let matches = cursor.matches(
+            &SUBJECT_QUERY,
+            self.syntax_tree.root_node(),
+            code.as_bytes(),
+        );
         for m in matches {
             for c in m.captures {
                 let name = names[c.index as usize].as_str();
@@ -654,22 +877,9 @@ impl SyntaxTree {
                 continue;
             }
             let range = edit.range.unwrap();
-            let offset = find_byte_offset(&self.code, range.start);
-            debug_assert!(
-                offset.is_some(),
-                "failed to find start byte-offset for {:?}",
-                range.start
-            );
-            let start_byte = offset.unwrap();
-            let end_byte = {
-                let end_byte = find_byte_offset(&self.code, range.end);
-                debug_assert!(
-                    end_byte.is_some(),
-                    "failed to find ending byte-offset for {:?}",
-                    range.end
-                );
-                end_byte.unwrap()
-            };
+            let start_byte = find_byte_offset(&self.code, range.start);
+            let end_byte = find_byte_offset(&self.code, range.end);
+
             eprintln!("start..end byte: {}..{}", start_byte, end_byte);
             self.code.replace(start_byte..end_byte, &edit.text);
             eprintln!("new code:\n{}", self.code.to_string());
@@ -687,7 +897,7 @@ impl SyntaxTree {
                 },
             };
             eprintln!("found end position, submitting edit");
-            self.tree.edit(&tree_sitter::InputEdit {
+            self.syntax_tree.edit(&tree_sitter::InputEdit {
                 start_byte,
                 old_end_byte: end_byte,
                 new_end_byte: start_byte + edit.text.len(),
@@ -698,12 +908,12 @@ impl SyntaxTree {
             eprintln!("parsing");
             {
                 // update the semantic ranges --------------------------------------
-                let prev_tree = &self.tree;
-                self.tree = self
+                let prev_tree = &self.syntax_tree;
+                self.syntax_tree = self
                     .parser
                     .parse(&(self.code.to_string()), Some(prev_tree))
                     .unwrap();
-                eprintln!("{}", &self.tree.root_node().to_sexp());
+                eprintln!("{}", &self.syntax_tree.root_node().to_sexp());
                 // TODO: detect if the subject line changed.
                 // HACK: for now, just recompute the indices
                 self.recompute_indices();
@@ -714,235 +924,10 @@ impl SyntaxTree {
     }
 
     fn get_diagnostics(&self) -> Vec<Diagnostic> {
-        let mut result = vec![];
-        // subject line length
-        if let Some((subject_line, subject_line_number)) = self._get_subject_line_with_number() {
-            // validation of subject line
-            let n_chars = subject_line.chars().count();
-            let cutoff = 50;
-            if n_chars > cutoff {
-                // validate the subject line length
-                result.push(Diagnostic {
-                    range: lsp_types::Range {
-                        start: Position {
-                            line: subject_line_number as u32,
-                            character: cutoff as u32,
-                        },
-                        end: Position {
-                            line: subject_line_number as u32,
-                            character: n_chars as u32,
-                        },
-                    },
-                    severity: Some(lsp_types::DiagnosticSeverity::WARNING),
-                    code: None,
-                    source: Some("git-commit language server".to_string()),
-                    message: format!("subject line is > {cutoff} characters", cutoff = cutoff),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                    code_description: None,
-                });
-            }
-            {
-                // lint for space in the type
-                let type_ = &subject_line[0..self.cc_indices.type_end().byte as usize];
-                eprintln!("type: >{:?}<", type_);
-                if type_.chars().any(|c| c.is_whitespace()) {
-                    result.push(Diagnostic {
-                        range: lsp_types::Range {
-                            start: Position {
-                                line: subject_line_number as u32,
-                                character: 0,
-                            },
-                            end: Position {
-                                line: subject_line_number as u32,
-                                character: self.cc_indices.type_end().char as u32,
-                            },
-                        },
-                        severity: Some(lsp_types::DiagnosticSeverity::ERROR),
-                        code: None,
-                        source: Some("git-commit language server".to_string()),
-                        message: format!("type contains whitespace"),
-                        related_information: None,
-                        tags: None,
-                        data: None,
-                        code_description: None,
-                    });
-                }
-            }
-            {
-                // lint the scope, if any
-                if let Some(scope_end) = self.cc_indices.scope_end() {
-                    // there's a scope
-                    let scope_start = self.cc_indices.scope_start().unwrap();
-
-                    let scope = {
-                        let start_byte = scope_start.byte as usize;
-                        &self.cc_indices.line[start_byte..scope_end.byte as usize]
-                    };
-                    eprintln!("scope: >{:?}<", scope);
-                    if self.cc_indices.open_paren.is_none() {
-                        result.push(Diagnostic {
-                            range: lsp_types::Range {
-                                start: Position {
-                                    line: subject_line_number as u32,
-                                    character: scope_start.char as u32,
-                                },
-                                end: Position {
-                                    line: subject_line_number as u32,
-                                    character: (scope_start.char + 1) as u32,
-                                },
-                            },
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            source: Some("git-commit language server".to_string()),
-                            message: "Missing opening parenthesis".to_string(),
-                            ..Default::default()
-                        })
-                    } else if self.cc_indices.close_paren.is_none() {
-                        result.push(Diagnostic {
-                            range: lsp_types::Range {
-                                start: Position {
-                                    line: subject_line_number as u32,
-                                    character: (scope_end.char - 1) as u32,
-                                },
-                                end: Position {
-                                    line: subject_line_number as u32,
-                                    character: (scope_end.char) as u32,
-                                },
-                            },
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            source: Some("git-commit language server".to_string()),
-                            message: "Missing closing parenthesis".to_string(),
-                            ..Default::default()
-                        });
-                    }
-                    if scope.chars().any(|c| c.is_whitespace()) {
-                        result.push(Diagnostic {
-                            range: lsp_types::Range {
-                                start: Position {
-                                    line: subject_line_number as u32,
-                                    character: self.cc_indices.type_end().char as u32,
-                                },
-                                end: Position {
-                                    line: subject_line_number as u32,
-                                    character: scope_end.char as u32,
-                                },
-                            },
-                            severity: Some(lsp_types::DiagnosticSeverity::ERROR),
-                            code: None,
-                            source: Some("git-commit language server".to_string()),
-                            message: format!("scope contains whitespace"),
-                            related_information: None,
-                            tags: None,
-                            data: None,
-                            code_description: None,
-                        });
-                    }
-                } else {
-                    // no scope
-                }
-            }
-            {
-                // check the colon is present
-                if let Some(colon) = self.cc_indices.colon {
-                    let start = self
-                        .cc_indices
-                        .scope_end()
-                        .map(|i| self.cc_indices.next_char(i))
-                        .unwrap_or_else(|| self.cc_indices.type_end());
-                    let span = &subject_line[start.byte as usize..colon.byte as usize];
-                    eprintln!("span: >{:?}<", span);
-                    for c in span.chars() {
-                        if c != '!' {
-                            result.push(Diagnostic {
-                                range: lsp_types::Range {
-                                    start: Position {
-                                        line: subject_line_number as u32,
-                                        character: start.char as u32,
-                                    },
-                                    end: Position {
-                                        line: subject_line_number as u32,
-                                        character: colon.char as u32,
-                                    },
-                                },
-                                severity: Some(DiagnosticSeverity::ERROR),
-                                source: Some("git-commit language server".to_string()),
-                                message: format!("Illegal character before colon: {:?}", c),
-                                ..Default::default()
-                            });
-                            break;
-                        }
-                    }
-                } else {
-                    let start = self
-                        .cc_indices
-                        .bang
-                        .or(self.cc_indices.close_paren)
-                        .map(|i| self.cc_indices.next_char(i))
-                        .unwrap_or_else(|| self.cc_indices.type_end());
-                    let end = self.cc_indices.next_char(start);
-                    let span = &subject_line[start.byte as usize..end.byte as usize];
-                    eprintln!("span: >{:?}<", span);
-
-                    result.push(Diagnostic {
-                        range: lsp_types::Range {
-                            start: Position {
-                                line: subject_line_number as u32,
-                                character: start.char as u32,
-                            },
-                            end: Position {
-                                line: subject_line_number as u32,
-                                character: end.char as u32,
-                            },
-                        },
-                        severity: Some(DiagnosticSeverity::ERROR),
-                        source: Some("git-commit language server".to_string()),
-                        message: "Missing colon".to_string(),
-                        ..Default::default()
-                    });
-                }
-            }
-            {
-                // lint space after colon
-                let start = self
-                    .cc_indices
-                    .colon
-                    .or(self.cc_indices.bang)
-                    .or(self.cc_indices.close_paren)
-                    .or_else(|| self.cc_indices.scope_end())
-                    .map(|i| self.cc_indices.next_char(i))
-                    .unwrap_or_else(|| self.cc_indices.type_end());
-                if !self.cc_indices.line.as_str()[start.byte as usize..]
-                    .chars()
-                    .next()
-                    .map(|c| c == ' ')
-                    .unwrap_or(false)
-                {
-                    let end = self.cc_indices.next_char(start);
-                    let span = &subject_line[start.byte as usize..end.byte as usize];
-                    eprintln!("span: >{:?}<", span);
-                    result.push(Diagnostic {
-                        range: lsp_types::Range {
-                            start: Position {
-                                line: subject_line_number as u32,
-                                character: start.char as u32,
-                            },
-                            end: Position {
-                                line: subject_line_number as u32,
-                                character: end.char as u32,
-                            },
-                        },
-                        severity: Some(lsp_types::DiagnosticSeverity::WARNING),
-                        code: None,
-                        source: Some("git-commit language server".to_string()),
-                        message: format!("Missing space after colon"),
-                        related_information: None,
-                        tags: None,
-                        data: None,
-                        code_description: None,
-                    });
-                }
-            }
+        let mut lints = if let Some(subject) = &self.subject {
+            subject.get_diagnostics(50)
+        } else {
+            vec![]
         };
         { // validation of message body
              // TODO: if there's a body, check for a blank line after the subject
@@ -951,14 +936,14 @@ impl SyntaxTree {
         { // trailer misspellings
         }
 
-        result
+        lints
     }
 }
 
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
 struct Server {
-    syntax_tree: SyntaxTree,
+    commit: GitCommitDocument,
     connection: lsp_server::Connection,
 }
 
@@ -1020,7 +1005,7 @@ impl Server {
     fn from_stdio() -> Self {
         let (conn, _io) = lsp_server::Connection::stdio();
         Server {
-            syntax_tree: SyntaxTree::new("".to_owned()),
+            commit: GitCommitDocument::new("".to_owned()),
             connection: conn,
         }
     }
@@ -1111,8 +1096,8 @@ impl Server {
         &mut self,
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
-        self.syntax_tree = SyntaxTree::new(params.text_document.text);
-        self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
+        self.commit = GitCommitDocument::new(params.text_document.text);
+        self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -1128,8 +1113,8 @@ impl Server {
         params: DidChangeTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // let uri = params.text_document.uri;
-        self.syntax_tree.edit(&params.content_changes);
-        self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
+        self.commit.edit(&params.content_changes);
+        self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
         // self.connection.sender.
         Ok(ServerLoopAction::Continue)
     }
@@ -1140,8 +1125,8 @@ impl Server {
         // in case incremental updates are messing up the text, try to refresh on-save
         if let Some(text) = params.text {
             eprintln!("refreshing syntax tree");
-            self.syntax_tree = SyntaxTree::new(text);
-            self.publish_diagnostics(params.text_document.uri, self.syntax_tree.get_diagnostics());
+            self.commit = GitCommitDocument::new(text);
+            self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
         }
         Ok(ServerLoopAction::Continue)
     }
@@ -1220,49 +1205,37 @@ impl Server {
         );
         eprintln!(
             "line_text:\n\t{}",
-            self.syntax_tree.code.line(position.line as usize)
+            self.commit.code.line(position.line as usize)
         );
         eprintln!("\t{}^", " ".repeat(position.character as usize));
 
         let mut result = vec![];
         let character_index = position.character as usize;
-        if position.line as usize == self.syntax_tree.get_subject_line_number() {
-            // consider completions for the cc type, scope
-            self.syntax_tree.cc_indices.debug_indices();
-            self.syntax_tree.cc_indices.debug_ranges();
-            // Using <= since the cursor should still trigger completions if it's at the end of a range
-            if character_index <= self.syntax_tree.cc_indices.type_end().char as usize {
-                // handle type completions
-                // TODO: allow configuration of types
-                result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
-            } else if character_index
-                <= self
-                    .syntax_tree
-                    .cc_indices
-                    .scope_end()
-                    .map(|i| i.char)
-                    .unwrap_or(0) as usize
-            {
-                // TODO: handle scope completions
-                eprintln!("scope completions");
-            } else if character_index
-                <= self
-                    .syntax_tree
-                    .cc_indices
-                    .prefix_end()
-                    .map(|i| i.char)
-                    .unwrap_or(0) as usize
-            {
-                // TODO: suggest either a bang or a colon
-            } else {
-                // in the subject message; no completions
+        if let Some(subject) = &self.commit.subject {
+            if position.line as usize == subject.line_number {
+                // consider completions for the cc type, scope
+                subject.debug_indices();
+                subject.debug_ranges();
+                // Using <= since the cursor should still trigger completions if it's at the end of a range
+                if character_index <= subject.type_end().char as usize {
+                    // handle type completions
+                    // TODO: allow configuration of types
+                    result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
+                } else if character_index
+                    <= subject.scope_end().map(|i| i.char).unwrap_or(0) as usize
+                {
+                    // TODO: handle scope completions
+                    eprintln!("scope completions");
+                } else if character_index
+                    <= subject.prefix_end().map(|i| i.char).unwrap_or(0) as usize
+                {
+                    // TODO: suggest either a bang or a colon
+                } else {
+                    // in the subject message; no completions
+                }
             }
         } else {
-            let line = self
-                .syntax_tree
-                .code
-                .line(position.line as usize)
-                .to_string(); // panics if line is out of bounds
+            let line = self.commit.code.line(position.line as usize).to_string(); // panics if line is out of bounds
             if let Some(c) = line.chars().next() {
                 if c == '#' {
                     // this is a commented line
@@ -1365,7 +1338,7 @@ impl Server {
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
-            data: syntax_token_scopes::handle_all_tokens(&self.syntax_tree, params)?,
+            data: syntax_token_scopes::handle_all_tokens(&self.commit, params)?,
         });
         let result: Response = Response {
             id: id.clone(),

@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 pub(crate) fn handle_all_tokens(
-    syntax_tree: &crate::SyntaxTree,
+    syntax_tree: &crate::GitCommitDocument,
     _params: lsp_types::SemanticTokensParams,
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
     // eprintln!("params: {:?}", params);
@@ -42,7 +42,7 @@ pub(crate) fn handle_all_tokens(
     let code = syntax_tree.code.to_string();
     let matches = cursor.matches(
         &HIGHLIGHTS_QUERY,
-        syntax_tree.tree.root_node(),
+        syntax_tree.syntax_tree.root_node(),
         code.as_bytes(),
     );
     // TODO: use subject line tokenization from syntax_tree.cc_indices
