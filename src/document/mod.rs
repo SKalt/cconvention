@@ -1,15 +1,16 @@
 pub(crate) mod lookaround;
 pub(crate) mod subject;
 use crop::{Rope, RopeSlice};
-use subject::Subject;
-
 use lookaround::{find_byte_offset, to_point};
+use subject::Subject;
 
 use crate::LANGUAGE;
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
+    static ref BODY_QUERY: tree_sitter::Query =
+        tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
 }
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
 
@@ -27,6 +28,43 @@ fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
         }
     }
     None
+}
+
+fn make_diagnostic(
+    start_line: usize,
+    start_char: u32,
+    end_line: usize,
+    end_char: u32,
+    severity: lsp_types::DiagnosticSeverity,
+    message: String,
+) -> lsp_types::Diagnostic {
+    lsp_types::Diagnostic {
+        source: Some(LINT_PROVIDER.to_string()),
+        range: lsp_types::Range {
+            start: lsp_types::Position {
+                line: start_line as u32,
+                character: start_char,
+            },
+            end: lsp_types::Position {
+                line: end_line as u32,
+                character: end_char,
+            },
+        },
+        severity: Some(severity),
+        message,
+        ..Default::default()
+    }
+}
+
+/// make a diagnostic for a single line
+pub(crate) fn make_line_diagnostic(
+    line_number: usize,
+    start: u32,
+    end: u32,
+    severity: lsp_types::DiagnosticSeverity,
+    message: String,
+) -> lsp_types::Diagnostic {
+    make_diagnostic(line_number, start, line_number, end, severity, message)
 }
 
 impl GitCommitDocument {
@@ -155,19 +193,64 @@ impl GitCommitDocument {
         self
     }
 
-    pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {
-        let mut lints = if let Some(subject) = &self.subject {
-            subject.get_diagnostics(50)
+    fn get_body(&self) -> impl Iterator<Item = (usize, RopeSlice)> + '_ {
+        let subject_line_number = if let Some(subject) = &self.subject {
+            subject.line_number + 1
         } else {
-            vec![]
+            0
         };
-        { // validation of message body
-             // TODO: if there's a body, check for a blank line after the subject
-             // TODO: check trailers are grouped and trailing
-        }
-        { // trailer misspellings
-        }
+        return self
+            .code
+            .lines()
+            .enumerate()
+            .skip(subject_line_number)
+            .filter(|(_, line)| line.bytes().next() != Some(b'#'));
+    }
+    pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {
+        let mut lints = vec![];
+        if let Some(subject) = &self.subject {
+            lints.extend(subject.get_diagnostics(50));
+            let mut body_lines = self.get_body();
+            if let Some((padding_line_number, next_line)) = body_lines.next() {
+                if next_line.chars().next().is_some() {
+                    lints.push(make_line_diagnostic(
+                        padding_line_number,
+                        0,
+                        0,
+                        lsp_types::DiagnosticSeverity::WARNING,
+                        "there should be a blank line between the subject and the body".into(),
+                    ));
+                } else {
+                    // the first line is blank
+                    if let Some((first_body_line_number, _)) = body_lines
+                        .filter(|(_, line)| line.chars().next().is_some())
+                        .filter(|(_, line)| line.chars().any(|c| !c.is_whitespace()))
+                        .next()
+                    {
+                        if padding_line_number + 1 != first_body_line_number {
+                            lints.push(make_diagnostic(
+                                padding_line_number,
+                                0,
+                                first_body_line_number,
+                                // since lsp_types::Position line numbers are 1-indexed
+                                // and enumeration line numbers are 0-indexed, `first_body_line_number`
+                                // is the line number of the preceding blank line
+                                0,
+                                lsp_types::DiagnosticSeverity::WARNING,
+                                "multiple blank lines between subject and body".into(),
+                            ));
+                        }
+                    }
+                    // ignore multiple trailing newlines without a body
+                };
+            };
+        };
 
+        { // validation of message body
+             // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
+        }
+        // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
+        // "signed-off-by:", etc.
         lints
     }
 }

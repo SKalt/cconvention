@@ -321,22 +321,7 @@ impl Subject {
         severity: lsp_types::DiagnosticSeverity,
         message: String,
     ) -> lsp_types::Diagnostic {
-        lsp_types::Diagnostic {
-            source: Some(super::LINT_PROVIDER.to_string()),
-            range: lsp_types::Range {
-                start: lsp_types::Position {
-                    line: self.line_number as u32,
-                    character: start,
-                },
-                end: lsp_types::Position {
-                    line: self.line_number as u32,
-                    character: end,
-                },
-            },
-            severity: Some(severity),
-            message,
-            ..Default::default()
-        }
+        super::make_line_diagnostic(self.line_number, start, end, severity, message)
     }
 
     fn check_line_length(&self, cutoff: usize) -> Option<lsp_types::Diagnostic> {

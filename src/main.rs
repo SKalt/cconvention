@@ -1,12 +1,11 @@
-use crop::{self, Rope, RopeSlice};
 use document::GitCommitDocument;
 use lsp_server::{self, Message, Notification, RequestId, Response};
 use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::{
-    self, CodeActionParams, CompletionItem, CompletionParams, Diagnostic,
-    DidOpenTextDocumentParams, DocumentLinkParams, DocumentOnTypeFormattingParams,
-    DocumentRangeFormattingParams, HoverParams, InitializeResult, SelectionRangeParams,
-    SemanticTokensLegend, ServerInfo, Url, WillSaveTextDocumentParams,
+    self, CodeActionParams, CompletionItem, CompletionParams, DidOpenTextDocumentParams,
+    DocumentLinkParams, DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams,
+    InitializeResult, SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
+    WillSaveTextDocumentParams,
 };
 use std::error::Error;
 mod document;
