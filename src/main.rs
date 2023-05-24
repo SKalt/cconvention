@@ -128,6 +128,7 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
             },
             completion_item: None,
         }),
+        // TODO: provide code actions?
         // code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
         //     lsp_types::CodeActionOptions {
         //         code_action_kinds: Some(vec![
@@ -436,15 +437,6 @@ impl Server {
         };
         // eprintln!("response: {:?}", response);
         Ok(response)
-    }
-    fn handle_code_action(
-        // TODO: implement
-        &self,
-        id: &RequestId,
-        params: CodeActionParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        //
-        todo!("code_action")
     }
     fn handle_formatting(
         &self,

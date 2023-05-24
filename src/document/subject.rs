@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashSet, fmt::Write};
+use std::{collections::HashSet, fmt::Write};
 
 use super::lookaround::StrIndex;
 
@@ -18,95 +18,252 @@ struct PrefixLengths {
 impl PrefixLengths {
     fn new(line: &str) -> Self {
         let mut offsets = Self::default();
+        #[derive(Debug)]
         enum State {
             /// we're in the type section
             Type,
+            /// we _might_ have seen the end of the type at .0, but we're not sure
+            TypeRecovery(u8),
             /// the number of open parentheses
             Scope,
+            /// we just formally recognized a ')' ending the scope
             ScopeDone,
-            /// we _might_ have seen the send of the scope at .0, but we're not sure
+            // MildScopeRecovery(u8),
+            /// we _might_ have seen the end of the scope at .0, but we're not sure
             ScopeRecovery(u8),
             /// the scope ended, now we're looking for the colon
             Rest,
             /// we _might_ have seen where the colon should be at .0, but we're not sure
             EndRecovery(u8),
+            Done,
         }
         let mut state = State::Type;
         let mut cursor = 0u8; // the byte offset of the current character
         let mut chars = line.chars();
-        for c in chars {
-            state = match c {
-                // which section to assign the current character to
-                '(' => match state {
-                    State::Type => State::Scope, // expected start of the scope :)
-                    State::Scope | State::ScopeRecovery(_) => state, // continue in an attempt to recover
-                    State::Rest | State::ScopeDone => State::EndRecovery(cursor),
-                    State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
+        while let Some(c) = chars.next() {
+            state = match state {
+                State::Type => match c {
+                    '(' => State::Scope,
+                    ')' => State::ScopeDone, // unexpected, but continue anyway
+                    '!' => State::Rest,
+                    ':' => State::Done,
+                    ' ' | '\t' => State::TypeRecovery(cursor),
+                    _ => state,
                 },
-                ')' => match state {
-                    State::Type => State::Rest, // unexpected, but consider ')' as the end of the scope anyway
-                    State::Scope | State::ScopeRecovery(_) => State::ScopeDone, // expected end of the scope :)
-                    State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected >:( // continue in an attempt to recover
-                    State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
-                },
-                '!' => match state {
-                    State::Type => State::Rest, // expected end of the type :)
-                    State::Scope => State::ScopeRecovery(cursor), // unexpected ! in the middle of the scope >:(
-                    State::ScopeRecovery(n) => {
-                        // we probably aren't in the scope anymore
-                        debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
-                        offsets.scope = n - offsets.type_;
-                        cursor = n;
-                        chars = line[n as usize..].chars();
-                        State::Rest
+                State::TypeRecovery(n) => match c {
+                    '(' => State::Scope,
+                    ')' => {
+                        // we probably just finished the scope
+                        offsets.type_ = n;
+                        offsets.scope = cursor - n;
+                        State::ScopeDone
                     }
-                    State::Rest | State::ScopeDone => State::Rest,
-                    State::EndRecovery(_) => state, // ok -- carry on until we see a colon
-                },
-                ' ' | '\t' => match state {
-                    State::Type => State::Type, // unexpected, but continue in hope of seeing '(' | '!' | ':'
-                    State::Scope => State::ScopeRecovery(cursor), // unexpected, but continue in hope of seeing ')' | '!' | ':'
-                    State::ScopeRecovery(n) => {
-                        // we probably aren't in the scope anymore
-                        debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
-                        offsets.scope = n - offsets.type_;
-                        cursor = n;
-                        chars = line[n as usize..].chars();
-                        State::Rest
+                    '!' => {
+                        // consume the whitespace that triggered the State::TypeRecovery
+                        offsets.type_ = n + 1;
+                        cursor = n + 1;
+                        let _line = &line[cursor as usize..];
+                        chars = _line.chars();
+                        state = State::Scope; // pretend the second word is a scope
+                        continue;
                     }
-                    State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected
-                    State::EndRecovery(_) => state, // keep going in hope of seeing a colon
+                    ':' => State::Done,
+                    ' ' | '\t' | _ => state, // keep scanning for the end of the type
                 },
-                ':' => match state {
-                    State::Type | State::Rest | State::ScopeDone | State::EndRecovery(_) => {
-                        // we're done with the prefix, but make sure we count the colon
-                        // for the 'rest' section
-                        state = State::Rest;
-                        offsets.rest += c.len_utf8() as u8;
+                State::Scope => match c {
+                    ')' => State::ScopeDone,
+                    '!' | ':' | ' ' | '\t' => {
+                        let candidate_terminator = line[cursor as usize + 1..]
+                            .chars()
+                            .any(|t| t == ':' || t == '!' || t == ')');
+                        if !candidate_terminator && (c == ':' || c == '!') {
+                            State::Rest
+                        } else {
+                            State::ScopeRecovery(cursor)
+                        }
+                    }
+                    _ => state,
+                },
+                State::ScopeDone => match c {
+                    '!' => State::Rest,
+                    ':' => State::Done,
+                    _ => State::EndRecovery(cursor),
+                },
+                // State::MildScopeRecovery(n) => match c {
+                //     ')' => State::ScopeDone,
+                //     '(' => state, // unexpected, keep scanning in hope of seeing the end of the scope
+                //     '!' | ':' => {
+                //         // unexpected: we probably aren't in the scope anymore
+                //         debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
+                //         offsets.scope = n - offsets.type_;
+                //         cursor = n;
+                //         chars = line[n as usize..].chars();
+                //         state = State::Rest;
+                //         continue;
+                //     }
+                //     _ => state,
+                // },
+                State::ScopeRecovery(n) => match c {
+                    ')' => State::ScopeDone,
+                    '(' => state, // unexpected, keep scanning in hope of seeing the end of the scope
+                    '!' | ':' => {
+                        match &line[n as usize..(n + 1) as usize] {
+                            " " | "\t" => State::ScopeRecovery(cursor),
+                            _ => {
+                                // unexpected: we probably aren't in the scope anymore
+                                debug_assert!(
+                                    n > 0,
+                                    "There should be no way to get to ScopeRecovery(0)"
+                                );
+                                offsets.scope = n - offsets.type_;
+                                cursor = n;
+                                chars = line[n as usize..].chars();
+                                state = State::Rest;
+                                continue;
+                            }
+                        }
+                    }
+                    // ' ' | '\t' => {},
+                    _ => state,
+                },
+                State::Rest => match c {
+                    ':' => State::Done,
+                    '!' => State::Rest,
+                    _ => State::EndRecovery(cursor),
+                },
+                State::EndRecovery(n) => match c {
+                    '\t' | ' ' | '!' => state, // keep scanning for a colon
+                    ':' => State::Done,        // if we find one, accept it and finish
+                    _ => {
+                        // all other characters imply that we aren't in the prefix anymore
+                        offsets.rest = n - offsets.type_ - offsets.scope;
+                        let _line = &line[n as usize..];
+                        cursor = n;
+                        state = State::Done;
                         break;
                     }
-                    State::Scope => State::ScopeRecovery(cursor), // unexpected; continue in hope of seeing ')'
-                    State::ScopeRecovery(_) => {
-                        todo!();
-                    }
                 },
-                _ => match state {
-                    State::Type | State::Scope | State::ScopeRecovery(_) => state, // par for the course
-                    State::Rest | State::ScopeDone => State::EndRecovery(cursor), // anything other than ! and : are unexpected
-                    State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
-                },
+                State::Done => panic!("State::Done should never reach another character"),
             };
+            // state = match c {
+            //     // which section to assign the current character to
+            //     '(' => match state {
+            //         State::Type | State::TypeRecovery(_) => State::Scope, // expected start of the scope :)
+            //         State::Scope | State::ScopeRecovery(_) => state, // continue in an attempt to recover
+            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor),
+            //         State::Done | State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
+            //     },
+            //     ')' => match state {
+            //         State::Type => State::Rest, // unexpected, but consider ')' as the end of the scope anyway
+            //         State::TypeRecovery(n) => {
+            //             // we probably just finished the scope
+            //             offsets.type_ = n;
+            //             offsets.scope = cursor - n;
+            //             State::ScopeDone
+            //         }
+            //         State::Scope | State::ScopeRecovery(_) => State::ScopeDone, // expected end of the scope :)
+            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected >:( // continue in an attempt to recover
+            //         State::Done | State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
+            //     },
+            //     '!' => match state {
+            //         State::Type => State::Rest, // expected end of the type :)
+            //         State::TypeRecovery(n) => {
+            //             // probably not in the type anymore
+            //             offsets.type_ = n;
+            //             let _line = &line[n as usize..];
+            //             chars = _line.chars();
+            //             state = State::ScopeRecovery(n);
+            //             continue;
+            //         }
+            //         State::Scope => State::ScopeRecovery(cursor), // unexpected ! in the middle of the scope >:(
+            //         State::ScopeRecovery(n) => {
+            //             // we probably aren't in the scope anymore
+            //             debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
+            //             offsets.scope = n - offsets.type_;
+            //             cursor = n;
+            //             chars = line[n as usize..].chars();
+            //             state = State::Rest;
+            //             continue;
+            //         }
+            //         State::Rest | State::ScopeDone => State::Rest,
+            //         State::Done => panic!("State::Done should never reach a '!'"),
+            //         State::EndRecovery(_) => state, // ok -- carry on until we see a colon
+            //     },
+            //     ' ' | '\t' => match state {
+            //         State::Type => State::TypeRecovery(cursor), // unexpected, but continue in hope of seeing '(' | '!' | ':'
+            //         State::TypeRecovery(_) => state, // keep going off the first checkpoint
+            //         State::Scope => State::ScopeRecovery(cursor), // unexpected, but continue in hope of seeing ')' | '!' | ':'
+            //         State::ScopeRecovery(n) => {
+            //             // we probably aren't in the scope anymore
+            //             debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
+            //             offsets.scope = n - offsets.type_;
+            //             cursor = n;
+            //             let _line = &line[n as usize..];
+            //             chars = _line.chars();
+            //             state = State::Rest;
+            //             continue;
+            //         }
+            //         State::Done => panic!("State::Done should never reach a ' '"),
+            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected
+            //         State::EndRecovery(_) => state, // keep going in hope of seeing a colon
+            //     },
+            //     ':' => match state {
+            //         State::Type
+            //         | State::TypeRecovery(_)
+            //         | State::Rest
+            //         | State::ScopeDone
+            //         | State::ScopeRecovery(_)
+            //         | State::EndRecovery(_) => {
+            //             // we're done with the prefix, but make sure we count the colon
+            //             // for the 'rest' section
+            //             State::Done
+            //         }
+            //         State::Done => panic!("State::Done should never reach a ':'"),
+            //         State::Scope => State::ScopeRecovery(cursor), // unexpected; continue in hope of seeing ')'
+            //     },
+            //     _ => match state {
+            //         State::Type
+            //         | State::Scope
+            //         | State::TypeRecovery(_)
+            //         | State::ScopeRecovery(_) => state, // par for the course
+            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // anything other than ! and : are unexpected
+            //         State::Done => panic!("State::Done should never reach another char"),
+
+            //         State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
+            //     },
+            // };
 
             let len = c.len_utf8() as u8;
+            cursor += len;
             match state {
-                State::Type => offsets.type_ += len,
+                State::Type | State::TypeRecovery(_) => offsets.type_ += len,
                 State::Scope | State::ScopeRecovery(_) | State::ScopeDone => offsets.scope += len,
                 State::Rest | State::EndRecovery(_) => offsets.rest += len,
+                State::Done => {
+                    offsets.rest += len;
+                    break;
+                }
             };
-            cursor += len;
+            debug_assert!(
+                cursor == offsets.type_ + offsets.scope + offsets.rest,
+                "cursor {} should be at the end of the prefix {}",
+                cursor,
+                offsets.type_ + offsets.scope + offsets.rest
+            );
         }
+        debug_assert!(
+            cursor == offsets.type_ + offsets.scope + offsets.rest,
+            "cursor {} should be at the end of the prefix {}",
+            cursor,
+            offsets.type_ + offsets.scope + offsets.rest
+        );
         match state {
-            State::Type | State::Scope | State::Rest | State::ScopeDone => {} // this is pretty much as good as we can do
+            State::Type
+            | State::TypeRecovery(_)
+            | State::Scope
+            | State::Rest
+            | State::Done
+            | State::ScopeDone => {} // this is pretty much as good as we can do
             State::ScopeRecovery(n) => {
                 // recover, ending the scope at `n`
                 debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
@@ -139,6 +296,38 @@ impl PrefixLengths {
     fn prefix_byte_range(&self) -> std::ops::Range<usize> {
         0..self.prefix_end_byte_offset()
     }
+}
+
+#[test]
+fn test_subject_stuff() {
+    let test_cases: Vec<((usize, &str), &str)> = {
+        let test_cases = include_str!("./subject_test_cases.txt");
+        test_cases
+            .lines()
+            .enumerate()
+            .step_by(2)
+            .zip(test_cases.lines().skip(1).step_by(2))
+            .collect()
+    };
+    let mut results = Vec::with_capacity(test_cases.len());
+    for ((_, input), expected) in test_cases.iter() {
+        let subject = Subject::new(input.to_string(), 0);
+        let actual = subject.debug_ranges();
+        let ok = &actual == expected;
+        results.push((actual, ok));
+    }
+    for (i, (result, ok)) in results.iter().enumerate() {
+        if !ok {
+            println!(
+                "test case failed: ./subject_test_cases.txt:{}",
+                &test_cases[i].0 .0 + 1
+            );
+            println!("input:    {}", &test_cases[i].0 .1);
+            println!("actual:   {}", result);
+            println!("expected: {}\n", &test_cases[i].1);
+        }
+    }
+    assert!(results.iter().all(|(_, ok)| *ok));
 }
 
 /// byte and char indices of significant characters in a conventional commit header.
@@ -234,7 +423,7 @@ impl Subject {
             ranges.write_char('s').unwrap();
         }
         for _ in self.rest_text().chars() {
-            ranges.write_char('r').unwrap();
+            ranges.write_char('R').unwrap();
         }
         for _ in self.message_text().chars() {
             ranges.write_char('m').unwrap();
@@ -311,6 +500,7 @@ impl Subject {
         if !scope_text
             .chars()
             .any(|c| !c.is_whitespace() && c != '(' && c != ')')
+            && scope_text.len() > 0
         {
             lints.push(self.make_diagnostic(
                 start.try_into().unwrap(),

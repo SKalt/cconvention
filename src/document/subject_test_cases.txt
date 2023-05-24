@@ -1,0 +1,110 @@
+type
+tttt
+ type: message
+tttttRmmmmmmmm
+ty pe: message
+tttttRmmmmmmmm
+type : message
+tttttRmmmmmmmm
+type (scope): message
+tttttsssssssRmmmmmmmm
+type(scope) : message
+ttttsssssssRRmmmmmmmm
+type (scope: message
+tttttssssssRmmmmmmmm
+type scope): message
+ttttsssssssRmmmmmmmm
+ type(scope): message
+tttttsssssssRmmmmmmmm
+type(scope) message
+ttttsssssssmmmmmmmm
+type(scope  message
+ttttssssssmmmmmmmmm
+type scope) message
+ttttsssssssmmmmmmmm
+type (scope  message
+tttttssssssmmmmmmmmm
+type scope)! message
+ttttsssssssRmmmmmmmm
+type (sc!ope  message
+tttttsssRmmmmmmmmmmmm
+type sco!pe) message
+tttttsssssssmmmmmmmm
+type scope! message
+tttttsssssRmmmmmmmm
+ty pe(scope): message
+tttttsssssssRmmmmmmmm
+type( scope): message
+ttttssssssssRmmmmmmmm
+type(sc ope): message
+ttttssssssssRmmmmmmmm
+type(scope ): message
+ttttssssssssRmmmmmmmm
+ty pe(sco pe): message
+tttttssssssssRmmmmmmmm
+type(scope!): message
+ttttssssssssRmmmmmmmm
+type(sco!pe): message
+ttttssssssssRmmmmmmmm
+type(!scope): message
+ttttssssssssRmmmmmmmm
+type(scope!) : message
+ttttssssssssRRmmmmmmmm
+type(sco!pe ): message
+ttttsssssssssRmmmmmmmm
+type(!sco pe): message
+ttttsssssssssRmmmmmmmm
+type(! scope): message
+ttttsssssssssRmmmmmmmm
+type( !scope): message
+ttttsssssssssRmmmmmmmm
+type (!scope): message
+tttttssssssssRmmmmmmmm
+type! (scope): message
+ttttRmmmmmmmmmmmmmmmmm
+type!( scope): message
+ttttRmmmmmmmmmmmmmmmmm
+type!(sc ope): message
+ttttRmmmmmmmmmmmmmmmmm
+type!(scope ): message
+ttttRmmmmmmmmmmmmmmmmm
+type!(scope) : message
+ttttRmmmmmmmmmmmmmmmmm
+ty pe!(scope): message
+tttttRmmmmmmmmmmmmmmmm
+type(!): message
+ttttsssRmmmmmmmm
+type!(): message
+ttttRmmmmmmmmmmm
+ty!pe(): message
+ttRmmmmmmmmmmmmm
+!type(): message
+Rmmmmmmmmmmmmmmm
+!type: message
+Rmmmmmmmmmmmmm
+type(!: message
+ttttsRRmmmmmmmm
+type)!: message
+ttttsRRmmmmmmmm
+type (!: message
+tttttsRRmmmmmmmm
+type )!: message
+ttttssRRmmmmmmmm
+type( !: message
+ttttssRRmmmmmmmm
+type) !: message
+ttttsRRRmmmmmmmm
+type(! : message
+ttttsRRRmmmmmmmm
+type)! : message
+ttttsRRRmmmmmmmm
+()invalid : message
+ssmmmmmmmmmmmmmmmmm
+(scope!: message
+ssssssRRmmmmmmmm
+)invalid!: message
+smmmmmmmmmmmmmmmmm
+(scope! message
+ssssssRmmmmmmmm
+)invalid! message
+smmmmmmmmmmmmmmmm
