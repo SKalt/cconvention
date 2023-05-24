@@ -27,6 +27,9 @@
   "categories": [
     "Programming Languages"
   ],
+  "extensionKind": [
+    "workspace"
+  ],
   "contributes": {
     "languages": [
       {

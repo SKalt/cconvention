@@ -20,7 +20,6 @@ pub fn find_byte_offset(text: &Rope, pos: lsp_types::Position) -> usize {
         } else {
             let line = line.to_string();
             for (i, c) in line.chars().enumerate() {
-                eprintln!("c: >{:?}<; offset: {}", c, byte_offset);
                 if i >= char_index {
                     // don't include the target char in the byte-offset
                     return byte_offset;

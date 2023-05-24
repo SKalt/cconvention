@@ -1,11 +1,11 @@
-feat(yeet): bleep
+type(scope): message
 
 # comment
-
-This is a simple subject
-`hey`
+simple body
+`code`
 ```sh
-echo ok # thing
+# will be stripped
+echo ok # embedded
 ```
 :This is a simple body.
 : Fake #123

@@ -91,11 +91,17 @@ impl GitCommitDocument {
         }
     }
     fn recompute_indices(&mut self) {
-        self.subject = if let Some((subject, line_number)) = self._get_subject_line_with_number() {
-            Some(Subject::new(subject.to_string(), line_number))
-        } else {
-            None
-        };
+        self.subject =
+            if let Some((subject_line, line_number)) = self._get_subject_line_with_number() {
+                let subject = Subject::new(subject_line.to_string(), line_number);
+                eprintln!("new subject:");
+                eprintln!("\t{}", subject_line);
+                eprintln!("\t{}", subject.debug_ranges());
+
+                Some(subject)
+            } else {
+                None
+            };
     }
     fn _get_subject_line_with_number(&self) -> Option<(String, usize)> {
         if let Some(node) = self.get_ts_subject_line() {
@@ -203,7 +209,7 @@ impl GitCommitDocument {
             .code
             .lines()
             .enumerate()
-            .skip(subject_line_number)
+            .skip(subject_line_number.into())
             .filter(|(_, line)| line.bytes().next() != Some(b'#'));
     }
     pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {

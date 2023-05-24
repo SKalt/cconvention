@@ -1,4 +1,11 @@
 {
   "editor.formatOnSave": true,
-  "cSpell.words": ["Bitmask", "bitmasks"]
+  "cSpell.words": ["Bitmask", "bitmasks", "lookaround"],
+  // "lldb.rpcServer": { "host": "127.0.0.1", "port": 12345 }
+  "[plaintext]": {
+    "editor.suggest.showSnippets": false,
+    "editor.suggest.showWords": false,
+    "editor.acceptSuggestionOnCommitCharacter": false,
+    "editor.acceptSuggestionOnEnter": "off"
+  }
 }

@@ -1,13 +1,14 @@
 use document::GitCommitDocument;
 use lsp_server::{self, Message, Notification, RequestId, Response};
-use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::{
     self, CodeActionParams, CompletionItem, CompletionParams, DidOpenTextDocumentParams,
     DocumentLinkParams, DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams,
     InitializeResult, SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
     WillSaveTextDocumentParams,
 };
+use lsp_types::{DidChangeTextDocumentParams, Position};
 use std::error::Error;
+use std::io::{Read, Write};
 mod document;
 mod syntax_token_scopes;
 
@@ -292,7 +293,7 @@ impl Server {
                 Ok(ServerLoopAction::Continue)
             }
             Message::Response(resp) => {
-                eprintln!("response: {:?}", resp);
+                // eprintln!("response: {:?}", resp);
                 Ok(ServerLoopAction::Continue)
             }
             Message::Notification(notification) => self.handle_notification(notification),
@@ -314,7 +315,7 @@ impl Server {
                 }
             };
         }
-        eprintln!("notification: {:?}", notification);
+        // eprintln!("notification: {:?}", notification);
         handle!(DidChangeTextDocument => handle_did_change);
         handle!(DidOpenTextDocument => handle_open);
         handle!(Exit => handle_exit);
@@ -328,7 +329,7 @@ impl Server {
         Ok(ServerLoopAction::Continue)
     }
     fn publish_diagnostics(&self, uri: Url, diagnostics: Vec<lsp_types::Diagnostic>) {
-        eprintln!("publishing diagnostics: {:?}", diagnostics);
+        // eprintln!("publishing diagnostics: {:?}", diagnostics);
         let params = lsp_types::PublishDiagnosticsParams {
             uri,
             diagnostics,
@@ -402,13 +403,14 @@ impl Server {
                 }
             };
         }
-        eprintln!("request: {:?}", request);
+        // eprintln!("request: {:?}", request);
         handle!(SemanticTokensFullRequest => handle_token_full);
         // handle!(SemanticTokensFullDeltaRequest => handle_token_full_delta);
         // handle!(SemanticTokensRangeRequest => handle_token_range);
         // handle!(SemanticTokensRefresh => handle_token_refresh);
 
         handle!(Completion => handle_completion);
+        handle!(Formatting => handle_formatting);
         // handle!(DocumentLinkRequest => handle_doc_link_request);
         // sent from the client to the server to compute commands for a given text document and range.
         // The request is triggered when the user moves the cursor into a problem marker
@@ -432,7 +434,7 @@ impl Server {
                 data: None,
             }),
         };
-        eprintln!("response: {:?}", response);
+        // eprintln!("response: {:?}", response);
         Ok(response)
     }
     fn handle_code_action(
@@ -444,6 +446,43 @@ impl Server {
         //
         todo!("code_action")
     }
+    fn handle_formatting(
+        &self,
+        id: &RequestId,
+        params: lsp_types::DocumentFormattingParams,
+    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        let diagnostics = self
+            .commit
+            .get_diagnostics()
+            .into_iter()
+            .filter(|d| d.severity == Some(lsp_types::DiagnosticSeverity::WARNING))
+            .collect::<Vec<_>>();
+        let mut result = Vec::<lsp_types::TextEdit>::with_capacity(diagnostics.len()); // fine to over-allocate
+        if let Some(subject) = &self.commit.subject {
+            // always auto-format the subject line, if any
+            result.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: subject.line_number as u32,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: subject.line_number as u32,
+                        character: subject.line.chars().count() as u32,
+                    },
+                },
+                new_text: subject.auto_format(),
+            });
+        };
+
+        let response = Response {
+            id: id.clone(),
+            result: Some(serde_json::to_value(result).unwrap()),
+            error: None,
+        };
+        Ok(response)
+    }
+
     fn handle_completion(
         &self,
         id: &RequestId,
@@ -454,32 +493,28 @@ impl Server {
             "completion position: line {}, column {}",
             &position.line, &position.character
         );
-        eprintln!(
-            "line_text:\n\t{}",
-            self.commit.code.line(position.line as usize)
-        );
-        eprintln!("\t{}^", " ".repeat(position.character as usize));
+        eprintln!("completion context:");
+        eprintln!("\t{}v", " ".repeat(position.character as usize));
+        eprintln!("\t{}", self.commit.code.line(position.line as usize));
 
         let mut result = vec![];
         let character_index = position.character as usize;
         if let Some(subject) = &self.commit.subject {
-            if position.line as usize == subject.line_number {
+            if position.line == subject.line_number as u32 {
                 // consider completions for the cc type, scope
-                subject.debug_indices();
-                subject.debug_ranges();
+                eprintln!("\t{}", subject.debug_ranges());
                 // Using <= since the cursor should still trigger completions if it's at the end of a range
-                if character_index <= subject.type_end().char as usize {
+                let type_len = subject.type_text().chars().count();
+                let scope_len = subject.scope_text().chars().count();
+                let rest_len = subject.rest_text().chars().count();
+                if character_index <= type_len {
                     // handle type completions
                     // TODO: allow configuration of types
                     result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
-                } else if character_index
-                    <= subject.scope_end().map(|i| i.char).unwrap_or(0) as usize
-                {
+                } else if character_index <= scope_len + type_len {
                     // TODO: handle scope completions
                     eprintln!("scope completions");
-                } else if character_index
-                    <= subject.prefix_end().map(|i| i.char).unwrap_or(0) as usize
-                {
+                } else if character_index <= rest_len + scope_len + type_len as usize {
                     // TODO: suggest either a bang or a colon
                 } else {
                     // in the subject message; no completions
@@ -643,6 +678,28 @@ impl Server {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    // sleep for a second
+    // std::thread::sleep(std::time::Duration::from_secs(1));
+    // // send a tcp request to 127.0.0.1 port 12345
+    // let addr = "127.0.0.1";
+    // let port = 12345;
+    // let addr = format!("{}:{}", addr, port);
+    // eprintln!("connecting to {}", addr);
+    // let mut stream = std::net::TcpStream::connect(addr)?;
+    // stream.set_nodelay(true)?;
+    // stream.write(
+    //     format!(
+    //         "{{\"program\": \"{}\"}}\n",
+    //         std::env::current_exe().unwrap().display()
+    //     )
+    //     .as_bytes(),
+    // )?;
+    // stream.flush()?;
+    // let mut buf = [0; 1024];
+    // stream.read(&mut buf)?;
+    // eprintln!("got response: {}", std::str::from_utf8(&buf)?);
+    // stream.shutdown(std::net::Shutdown::Write)?;
+
     // let tracer = logging::sdk::export::trace::stdout::new_pipeline().install_simple();
     // TODO: read in configuration about how to connect, scopes, etc.
     // lsp_server::Connection::initialize(&self, server_capabilities);
