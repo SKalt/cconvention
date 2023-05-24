@@ -1,14 +1,12 @@
 use document::GitCommitDocument;
 use lsp_server::{self, Message, Notification, RequestId, Response};
+use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::{
-    self, CodeActionParams, CompletionItem, CompletionParams, DidOpenTextDocumentParams,
-    DocumentLinkParams, DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams,
-    InitializeResult, SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
-    WillSaveTextDocumentParams,
+    self, CompletionItem, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
+    DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeResult,
+    SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url, WillSaveTextDocumentParams,
 };
-use lsp_types::{DidChangeTextDocumentParams, Position};
 use std::error::Error;
-use std::io::{Read, Write};
 mod document;
 mod syntax_token_scopes;
 

@@ -1,11 +1,5 @@
 use crop::Rope;
 
-#[derive(Debug, Clone, Copy)]
-pub struct StrIndex {
-    pub byte: u8,
-    pub char: u8,
-}
-
 /// given a line/column position in the text, return the the byte offset of the position
 pub fn find_byte_offset(text: &Rope, pos: lsp_types::Position) -> usize {
     let mut byte_offset: usize = 0;

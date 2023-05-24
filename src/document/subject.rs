@@ -1,7 +1,5 @@
 use std::{collections::HashSet, fmt::Write};
 
-use super::lookaround::StrIndex;
-
 /// byte-offsets of ranges in a conventional commit header.
 #[derive(Debug, Default, Clone)]
 struct PrefixLengths {
@@ -22,18 +20,17 @@ impl PrefixLengths {
         enum State {
             /// we're in the type section
             Type,
-            /// we _might_ have seen the end of the type at .0, but we're not sure
+            /// we _might_ have seen the end of the type, but we're not sure
             TypeRecovery(u8),
-            /// the number of open parentheses
+            /// including the ( up to the )
             Scope,
             /// we just formally recognized a ')' ending the scope
             ScopeDone,
-            // MildScopeRecovery(u8),
-            /// we _might_ have seen the end of the scope at .0, but we're not sure
+            /// we _might_ have seen the end of the scope, but we're not sure
             ScopeRecovery(u8),
             /// the scope ended, now we're looking for the colon
             Rest,
-            /// we _might_ have seen where the colon should be at .0, but we're not sure
+            /// we _might_ have seen where the colon should be, but we're not sure
             EndRecovery(u8),
             Done,
         }
@@ -145,93 +142,6 @@ impl PrefixLengths {
                 },
                 State::Done => panic!("State::Done should never reach another character"),
             };
-            // state = match c {
-            //     // which section to assign the current character to
-            //     '(' => match state {
-            //         State::Type | State::TypeRecovery(_) => State::Scope, // expected start of the scope :)
-            //         State::Scope | State::ScopeRecovery(_) => state, // continue in an attempt to recover
-            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor),
-            //         State::Done | State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
-            //     },
-            //     ')' => match state {
-            //         State::Type => State::Rest, // unexpected, but consider ')' as the end of the scope anyway
-            //         State::TypeRecovery(n) => {
-            //             // we probably just finished the scope
-            //             offsets.type_ = n;
-            //             offsets.scope = cursor - n;
-            //             State::ScopeDone
-            //         }
-            //         State::Scope | State::ScopeRecovery(_) => State::ScopeDone, // expected end of the scope :)
-            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected >:( // continue in an attempt to recover
-            //         State::Done | State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
-            //     },
-            //     '!' => match state {
-            //         State::Type => State::Rest, // expected end of the type :)
-            //         State::TypeRecovery(n) => {
-            //             // probably not in the type anymore
-            //             offsets.type_ = n;
-            //             let _line = &line[n as usize..];
-            //             chars = _line.chars();
-            //             state = State::ScopeRecovery(n);
-            //             continue;
-            //         }
-            //         State::Scope => State::ScopeRecovery(cursor), // unexpected ! in the middle of the scope >:(
-            //         State::ScopeRecovery(n) => {
-            //             // we probably aren't in the scope anymore
-            //             debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
-            //             offsets.scope = n - offsets.type_;
-            //             cursor = n;
-            //             chars = line[n as usize..].chars();
-            //             state = State::Rest;
-            //             continue;
-            //         }
-            //         State::Rest | State::ScopeDone => State::Rest,
-            //         State::Done => panic!("State::Done should never reach a '!'"),
-            //         State::EndRecovery(_) => state, // ok -- carry on until we see a colon
-            //     },
-            //     ' ' | '\t' => match state {
-            //         State::Type => State::TypeRecovery(cursor), // unexpected, but continue in hope of seeing '(' | '!' | ':'
-            //         State::TypeRecovery(_) => state, // keep going off the first checkpoint
-            //         State::Scope => State::ScopeRecovery(cursor), // unexpected, but continue in hope of seeing ')' | '!' | ':'
-            //         State::ScopeRecovery(n) => {
-            //             // we probably aren't in the scope anymore
-            //             debug_assert!(n > 0, "There should be no way to get to ScopeRecovery(0)");
-            //             offsets.scope = n - offsets.type_;
-            //             cursor = n;
-            //             let _line = &line[n as usize..];
-            //             chars = _line.chars();
-            //             state = State::Rest;
-            //             continue;
-            //         }
-            //         State::Done => panic!("State::Done should never reach a ' '"),
-            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // unexpected
-            //         State::EndRecovery(_) => state, // keep going in hope of seeing a colon
-            //     },
-            //     ':' => match state {
-            //         State::Type
-            //         | State::TypeRecovery(_)
-            //         | State::Rest
-            //         | State::ScopeDone
-            //         | State::ScopeRecovery(_)
-            //         | State::EndRecovery(_) => {
-            //             // we're done with the prefix, but make sure we count the colon
-            //             // for the 'rest' section
-            //             State::Done
-            //         }
-            //         State::Done => panic!("State::Done should never reach a ':'"),
-            //         State::Scope => State::ScopeRecovery(cursor), // unexpected; continue in hope of seeing ')'
-            //     },
-            //     _ => match state {
-            //         State::Type
-            //         | State::Scope
-            //         | State::TypeRecovery(_)
-            //         | State::ScopeRecovery(_) => state, // par for the course
-            //         State::Rest | State::ScopeDone => State::EndRecovery(cursor), // anything other than ! and : are unexpected
-            //         State::Done => panic!("State::Done should never reach another char"),
-
-            //         State::EndRecovery(_) => break, // we probably aren't in the prefix anymore
-            //     },
-            // };
 
             let len = c.len_utf8() as u8;
             cursor += len;
@@ -330,7 +240,7 @@ fn test_subject_stuff() {
     assert!(results.iter().all(|(_, ok)| *ok));
 }
 
-/// byte and char indices of significant characters in a conventional commit header.
+/// byte indices of significant characters in a conventional commit header.
 /// Used to parse the header into its constituent parts and to find relevant completions.
 #[derive(Debug, Default, Clone)]
 pub struct Subject {
@@ -338,29 +248,6 @@ pub struct Subject {
     pub line_number: u8,
     offsets: PrefixLengths,
 }
-// basics
-// TODO: parsing fns
-
-// fn match_prefix(input: &str) -> &str {
-//     if let Some(i) = input
-//         .find(':')
-//         .or_else(|| input.find('!'))
-//         .or_else(|| input.find(')'))
-//         .or_else(|| input.find(' '))
-//     {
-//         return &input[0..i + 1];
-//     };
-//     if let Some(open_paren) = input.find('(') {
-//         // find the next space
-//         if let Some(i) = &input[open_paren..].find(' ') {
-//             return &input[0..open_paren + i + 1];
-//         } else {
-//             input
-//         }
-//     }
-//     // TODO: handle "feat(scope subject"
-//     input
-// }
 
 impl Subject {
     /// parse a conventional commit header into its byte indices
@@ -395,23 +282,6 @@ impl Subject {
 
 // lookaround & ranges
 impl Subject {
-    /// returns the char index of the end of the type, NON-INCLUSIVE:
-    /// ```txt
-    /// type(scope): <subject>
-    ///    ^
-    /// ```
-
-    fn next_char(&self, index: StrIndex) -> StrIndex {
-        if let Some(c) = &self.line[index.byte as usize..].chars().next() {
-            return StrIndex {
-                byte: index.byte + TryInto::<u8>::try_into(c.len_utf8()).unwrap(),
-                char: index.char + 1,
-            };
-        } else {
-            return index;
-        }
-    }
-
     pub(crate) fn debug_ranges(&self) -> String {
         // TODO: ensure this function call is a no-op in release builds
         let n_chars = self.line.chars().count();

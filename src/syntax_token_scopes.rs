@@ -2,6 +2,8 @@
 /// provide a "Semantic Tokens" API that can be used to provide syntax highlighting.
 use std::{collections::HashMap, error::Error};
 
+use crate::document::subject;
+
 use super::LANGUAGE;
 use lsp_types::SemanticToken;
 
@@ -32,17 +34,17 @@ lazy_static! {
 }
 
 pub(crate) fn handle_all_tokens(
-    syntax_tree: &crate::GitCommitDocument,
+    doc: &crate::GitCommitDocument,
     _params: lsp_types::SemanticTokensParams,
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
     // eprintln!("params: {:?}", params);
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
     // let bytes = ;
     let mut cursor = tree_sitter::QueryCursor::new();
-    let code = syntax_tree.code.to_string();
+    let code = doc.code.to_string();
     let matches = cursor.matches(
         &HIGHLIGHTS_QUERY,
-        syntax_tree.syntax_tree.root_node(),
+        doc.syntax_tree.root_node(),
         code.as_bytes(),
     );
     // TODO: use subject line tokenization from syntax_tree.cc_indices
