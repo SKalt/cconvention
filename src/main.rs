@@ -393,6 +393,21 @@ impl Server {
                 },
                 new_text: subject.auto_format(),
             });
+            if let Some(missing_padding_line) = self.commit.get_missing_padding_line_number() {
+                result.push(lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: missing_padding_line as u32,
+                            character: 0,
+                        },
+                        end: lsp_types::Position {
+                            line: missing_padding_line as u32,
+                            character: 0,
+                        },
+                    },
+                    new_text: "\n".into(),
+                })
+            }
         };
         // TODO: ensure trailers are at the end of the commit message
 

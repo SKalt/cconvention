@@ -212,6 +212,16 @@ impl GitCommitDocument {
             .skip(subject_line_number.into())
             .filter(|(_, line)| line.bytes().next() != Some(b'#'));
     }
+
+    pub(crate) fn get_missing_padding_line_number(&self) -> Option<usize> {
+        let mut body_lines = self.get_body();
+        if let Some((padding_line_number, next_line)) = body_lines.next() {
+            if next_line.chars().next().is_some() {
+                return Some(padding_line_number);
+            }
+        }
+        None
+    }
     pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
