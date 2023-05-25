@@ -420,7 +420,7 @@ impl Subject {
         };
         if missing_colon {
             lints.push(self.make_diagnostic(
-                (end - 1).try_into().unwrap(),
+                end.try_into().unwrap(),
                 end.try_into().unwrap(),
                 Severity::WARNING,
                 format!("Missing colon"),
