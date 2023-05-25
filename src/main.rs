@@ -433,6 +433,10 @@ impl Server {
                     result.extend(config::as_completion(&self.config.types()));
                 } else if character_index <= scope_len + type_len {
                     result.extend(config::as_completion(&self.config.scopes()));
+                    // eprintln!("scope completions: {:?}", result);
+                    if let Some(first) = result.first_mut() {
+                        first.preselect = Some(true);
+                    }
                 } else if character_index <= rest_len + scope_len + type_len as usize {
                     // TODO: suggest either a bang or a colon
                 } else {

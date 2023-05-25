@@ -37,6 +37,7 @@ dependencies = [
  "lazy_static",
  "lsp-server",
  "lsp-types",
+ "regex",
  "serde",
  "serde_json",
  "tree-sitter",
