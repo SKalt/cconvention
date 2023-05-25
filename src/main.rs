@@ -1,3 +1,4 @@
+use config::{Config, DefaultConfig};
 use document::GitCommitDocument;
 use lsp_server::{self, Message, Notification, RequestId, Response};
 use lsp_types::DidChangeTextDocumentParams;
@@ -7,9 +8,9 @@ use lsp_types::{
     SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url, WillSaveTextDocumentParams,
 };
 use std::error::Error;
+mod config;
 mod document;
 mod syntax_token_scopes;
-
 extern crate serde_json;
 
 #[macro_use]
@@ -18,79 +19,6 @@ extern crate lazy_static;
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = get_capabilities();
     static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
-    static ref DEFAULT_TYPES: Vec<lsp_types::CompletionItem> = {
-        vec![
-            lsp_types::CompletionItem {
-                label: "feat".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("adds a new feature".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "fix".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("fixes a bug".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "docs".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("changes only the documentation".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "style".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some(
-                    "changes the style but not the meaning of the code (such as formatting)"
-                        .to_string(),
-                ),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "perf".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("improves performance".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "test".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("adds or corrects tests".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "build".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("changes the build system or external dependencies".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "chore".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("changes outside the code, docs, or tests".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "ci".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("changes to the Continuous Integration (CI) system".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "refactor".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("changes the code without changing behavior".to_string()),
-                ..Default::default()
-            },
-            lsp_types::CompletionItem {
-                label: "revert".to_string(),
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                detail: Some("reverts prior changes".to_string()),
-                ..Default::default()
-            },
-        ]
-    };
 }
 
 /// a constant (a function that always returns the same thing) that returns the
@@ -194,6 +122,7 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
 struct Server {
+    config: Box<dyn Config>,
     commit: GitCommitDocument,
     connection: lsp_server::Connection,
 }
@@ -256,6 +185,7 @@ impl Server {
     fn from_stdio() -> Self {
         let (conn, _io) = lsp_server::Connection::stdio();
         Server {
+            config: Box::new(DefaultConfig::new()),
             commit: GitCommitDocument::new("".to_owned()),
             connection: conn,
         }
@@ -291,8 +221,8 @@ impl Server {
                 self.respond(response);
                 Ok(ServerLoopAction::Continue)
             }
-            Message::Response(resp) => {
-                // eprintln!("response: {:?}", resp);
+            Message::Response(_resp) => {
+                // eprintln!("response: {:?}", _resp);
                 Ok(ServerLoopAction::Continue)
             }
             Message::Notification(notification) => self.handle_notification(notification),
@@ -439,7 +369,7 @@ impl Server {
     fn handle_formatting(
         &self,
         id: &RequestId,
-        params: lsp_types::DocumentFormattingParams,
+        _params: lsp_types::DocumentFormattingParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         let diagnostics = self
             .commit
@@ -464,6 +394,7 @@ impl Server {
                 new_text: subject.auto_format(),
             });
         };
+        // TODO: ensure trailers are at the end of the commit message
 
         let response = Response {
             id: id.clone(),
@@ -499,11 +430,9 @@ impl Server {
                 let rest_len = subject.rest_text().chars().count();
                 if character_index <= type_len {
                     // handle type completions
-                    // TODO: allow configuration of types
-                    result.extend(DEFAULT_TYPES.iter().map(|item| item.to_owned()));
+                    result.extend(config::as_completion(&self.config.types()));
                 } else if character_index <= scope_len + type_len {
-                    // TODO: handle scope completions
-                    eprintln!("scope completions");
+                    result.extend(config::as_completion(&self.config.scopes()));
                 } else if character_index <= rest_len + scope_len + type_len as usize {
                     // TODO: suggest either a bang or a colon
                 } else {
@@ -668,32 +597,6 @@ impl Server {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
-    // sleep for a second
-    // std::thread::sleep(std::time::Duration::from_secs(1));
-    // // send a tcp request to 127.0.0.1 port 12345
-    // let addr = "127.0.0.1";
-    // let port = 12345;
-    // let addr = format!("{}:{}", addr, port);
-    // eprintln!("connecting to {}", addr);
-    // let mut stream = std::net::TcpStream::connect(addr)?;
-    // stream.set_nodelay(true)?;
-    // stream.write(
-    //     format!(
-    //         "{{\"program\": \"{}\"}}\n",
-    //         std::env::current_exe().unwrap().display()
-    //     )
-    //     .as_bytes(),
-    // )?;
-    // stream.flush()?;
-    // let mut buf = [0; 1024];
-    // stream.read(&mut buf)?;
-    // eprintln!("got response: {}", std::str::from_utf8(&buf)?);
-    // stream.shutdown(std::net::Shutdown::Write)?;
-
-    // let tracer = logging::sdk::export::trace::stdout::new_pipeline().install_simple();
-    // TODO: read in configuration about how to connect, scopes, etc.
-    // lsp_server::Connection::initialize(&self, server_capabilities);
-    // let conn = lsp_server::Connection::connect(addr);
     Server::from_stdio().init()?.serve()?;
     eprintln!("done");
     Ok(())

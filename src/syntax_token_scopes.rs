@@ -2,8 +2,6 @@
 /// provide a "Semantic Tokens" API that can be used to provide syntax highlighting.
 use std::{collections::HashMap, error::Error};
 
-use crate::document::subject;
-
 use super::LANGUAGE;
 use lsp_types::SemanticToken;
 
@@ -58,7 +56,7 @@ pub(crate) fn handle_all_tokens(
             // TODO: handle if the client doesn't support overlapping tokens
             match capture_name {
                 "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
-                other => {
+                _other => {
                     // eprintln!("capture::<{}>", other);
                 }
             };
