@@ -40,7 +40,7 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
                 )),
             },
         )),
-        hover_provider: None,
+        hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         // FIXME: provide hover info about types, scopes
         // hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         // TODO: provide selection range
@@ -75,7 +75,7 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
         document_range_formatting_provider: None,
         // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_onTypeFormatting
         document_on_type_formatting_provider: Some(lsp_types::DocumentOnTypeFormattingOptions {
-            first_trigger_character: "\n".to_string(),
+            first_trigger_character: "(".to_string(),
             more_trigger_character: None,
         }),
 
@@ -347,11 +347,11 @@ impl Server {
         // on GitHub, BitBucket, GitLab, etc.
         // handle!(CodeActionRequest => handle_code_action);
         // sent from the client to the server to compute completion items at a given cursor position
-        // handle!(HoverRequest => handle_hover);
+        handle!(HoverRequest => handle_hover);
         // handle!(RangeFormatting => handle_range_formatting);
         // handle!(ResolveCompletionItem => handle_resolving_completion_item);
         // handle!(SelectionRangeRequest => handle_selection_range_request);
-        // handle!(OnTypeFormatting => handle_on_type_formatting);
+        handle!(OnTypeFormatting => handle_on_type_formatting);
         // handle!(WillSaveWaitUntil => handle_will_save_wait_until);
 
         let response = Response {
@@ -366,21 +366,11 @@ impl Server {
         // eprintln!("response: {:?}", response);
         Ok(response)
     }
-    fn handle_formatting(
-        &self,
-        id: &RequestId,
-        _params: lsp_types::DocumentFormattingParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        let diagnostics = self
-            .commit
-            .get_diagnostics()
-            .into_iter()
-            .filter(|d| d.severity == Some(lsp_types::DiagnosticSeverity::WARNING))
-            .collect::<Vec<_>>();
-        let mut result = Vec::<lsp_types::TextEdit>::with_capacity(diagnostics.len()); // fine to over-allocate
+    fn _format(&self) -> Vec<lsp_types::TextEdit> {
+        let mut fixes = Vec::<lsp_types::TextEdit>::new();
         if let Some(subject) = &self.commit.subject {
             // always auto-format the subject line, if any
-            result.push(lsp_types::TextEdit {
+            fixes.push(lsp_types::TextEdit {
                 range: lsp_types::Range {
                     start: lsp_types::Position {
                         line: subject.line_number as u32,
@@ -394,7 +384,7 @@ impl Server {
                 new_text: subject.auto_format(),
             });
             if let Some(missing_padding_line) = self.commit.get_missing_padding_line_number() {
-                result.push(lsp_types::TextEdit {
+                fixes.push(lsp_types::TextEdit {
                     range: lsp_types::Range {
                         start: lsp_types::Position {
                             line: missing_padding_line as u32,
@@ -410,10 +400,16 @@ impl Server {
             }
         };
         // TODO: ensure trailers are at the end of the commit message
-
+        fixes
+    }
+    fn handle_formatting(
+        &self,
+        id: &RequestId,
+        _params: lsp_types::DocumentFormattingParams,
+    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         let response = Response {
             id: id.clone(),
-            result: Some(serde_json::to_value(result).unwrap()),
+            result: Some(serde_json::to_value(self._format()).unwrap()),
             error: None,
         };
         Ok(response)
@@ -548,12 +544,50 @@ impl Server {
         };
         Ok(response)
     }
+    /// provide docs about types, (TODO: scopes) on-hover
+    /// see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_hover
     fn handle_hover(
         &self,
         id: &RequestId,
         params: HoverParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("hover")
+        if let Some(subject) = &self.commit.subject {
+            let _position = &params.text_document_position_params.position;
+            if _position.line == subject.line_number as u32 {
+                let _type_text = subject.type_text();
+                let _type_len = _type_text.chars().count();
+                if _position.character <= _type_len as u32 {
+                    if let Some((_, doc)) = self
+                        .config
+                        .types()
+                        .iter()
+                        .find(|(type_, _doc)| type_.as_str() == _type_text)
+                    {
+                        return Ok(Response {
+                            id: id.clone(),
+                            result: Some(
+                                serde_json::to_value(lsp_types::Hover {
+                                    contents: lsp_types::HoverContents::Markup(
+                                        lsp_types::MarkupContent {
+                                            kind: lsp_types::MarkupKind::Markdown,
+                                            value: doc.to_owned(),
+                                        },
+                                    ),
+                                    range: None,
+                                })
+                                .unwrap(),
+                            ),
+                            error: None,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(Response {
+            id: id.clone(),
+            result: None,
+            error: None,
+        })
     }
     fn handle_token_full(
         &mut self,
@@ -604,14 +638,13 @@ impl Server {
         id: &RequestId,
         params: DocumentOnTypeFormattingParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("on_type_formatting")
-    }
-    fn handle_will_save_wait_until(
-        &self,
-        id: &RequestId,
-        params: WillSaveTextDocumentParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("will_save_wait_until")
+        eprintln!("on_type_formatting: params: {:?}", params);
+        let result: Vec<lsp_types::TextEdit> = self._format();
+        return Ok(Response {
+            id: id.clone(),
+            result: Some(serde_json::to_value(result).unwrap()),
+            error: None,
+        });
     }
 }
 
