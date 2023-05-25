@@ -115,6 +115,8 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
                 },
             ),
         ),
+        // useless implementation commented :/
+        // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         ..Default::default()
     }
 }
@@ -544,7 +546,7 @@ impl Server {
         };
         Ok(response)
     }
-    /// provide docs about types, (TODO: scopes) on-hover
+    /// provide docs on-hover of types
     /// see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_hover
     fn handle_hover(
         &self,
@@ -580,12 +582,14 @@ impl Server {
                             error: None,
                         });
                     }
+                } else {
+                    // TODO: provide on-hover docs for scopes.
                 }
             }
         }
         Ok(Response {
             id: id.clone(),
-            result: None,
+            result: Some(serde_json::Value::Null),
             error: None,
         })
     }
@@ -626,13 +630,106 @@ impl Server {
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         todo!("resolving_completion_item")
     }
-    fn handle_selection_range_request(
-        &self,
-        id: &RequestId,
-        params: SelectionRangeParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("selection_range_request")
-    }
+    /// see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_selectionRange
+    // fn handle_selection_range_request(
+    //     &self,
+    //     id: &RequestId,
+    //     params: SelectionRangeParams,
+    // ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+    //     let result: Vec<lsp_types::SelectionRange> = params
+    //         .positions
+    //         .iter()
+    //         .map(|pos| {
+    //             if let Some(subject) = &self.commit.subject {
+    //                 eprintln!("expanding selection range in subject: {:?}", pos);
+    //                 if pos.line == subject.line_number as u32 {
+    //                     let type_len = subject.type_text().chars().count();
+    //                     let scope_len = subject.scope_text().chars().count();
+    //                     let rest_len = subject.rest_text().chars().count();
+    //                     let prefix = lsp_types::SelectionRange {
+    //                         range: lsp_types::Range {
+    //                             start: lsp_types::Position {
+    //                                 line: pos.line,
+    //                                 character: 0,
+    //                             },
+    //                             end: lsp_types::Position {
+    //                                 line: pos.line,
+    //                                 character: type_len as u32,
+    //                             },
+    //                         },
+    //                         parent: None,
+    //                     };
+    //                     let _prefix = Box::new(prefix);
+    //                     if pos.character <= type_len as u32 {
+    //                         return lsp_types::SelectionRange {
+    //                             range: lsp_types::Range {
+    //                                 start: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: 0,
+    //                                 },
+    //                                 end: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: type_len as u32,
+    //                                 },
+    //                             },
+    //                             parent: Some(_prefix),
+    //                         };
+    //                     };
+    //                     if pos.character <= (type_len + scope_len) as u32 {
+    //                         return lsp_types::SelectionRange {
+    //                             range: lsp_types::Range {
+    //                                 start: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: type_len as u32,
+    //                                 },
+    //                                 end: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: (type_len + scope_len) as u32,
+    //                                 },
+    //                             },
+    //                             parent: Some(_prefix),
+    //                         };
+    //                     };
+    //                     if pos.character <= (type_len + scope_len + rest_len) as u32 {
+    //                         return lsp_types::SelectionRange {
+    //                             range: lsp_types::Range {
+    //                                 start: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: (type_len + scope_len) as u32,
+    //                                 },
+    //                                 end: lsp_types::Position {
+    //                                     line: pos.line,
+    //                                     character: (type_len + scope_len + rest_len) as u32,
+    //                                 },
+    //                             },
+    //                             parent: Some(_prefix),
+    //                         };
+    //                     }
+    //                     return lsp_types::SelectionRange {
+    //                         range: lsp_types::Range {
+    //                             start: lsp_types::Position {
+    //                                 line: pos.line,
+    //                                 character: (type_len + scope_len + rest_len) as u32,
+    //                             },
+    //                             end: lsp_types::Position {
+    //                                 line: pos.line,
+    //                                 character: subject.line.chars().count() as u32,
+    //                             },
+    //                         },
+    //                         parent: None,
+    //                     };
+    //                 };
+    //             };
+    //             // TODO: check for belonging to a trailer
+    //             Default::default()
+    //         })
+    //         .collect();
+    //     Ok(Response {
+    //         id: id.clone(),
+    //         result: Some(serde_json::to_value(result).unwrap()),
+    //         error: None,
+    //     })
+    // }
     fn handle_on_type_formatting(
         &self,
         id: &RequestId,
