@@ -1,5 +1,7 @@
 pub(crate) mod lookaround;
 pub(crate) mod subject;
+use std::path::PathBuf;
+
 use crop::{Rope, RopeSlice};
 use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
@@ -13,6 +15,8 @@ lazy_static! {
     //     tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
     static ref TRAILER_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(trailer) @trailer",).unwrap();
+    static ref FILE_QUERY: tree_sitter::Query =
+        tree_sitter::Query::new(LANGUAGE.clone(), "(filepath) @text.uri",).unwrap();
 }
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
 
@@ -214,7 +218,43 @@ impl GitCommitDocument {
             .skip(subject_line_number.into())
             .filter(|(_, line)| line.bytes().next() != Some(b'#'));
     }
-
+    pub(crate) fn get_links(&self, repo_root: PathBuf) -> Vec<lsp_types::DocumentLink> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let code = self.code.to_string();
+        let matches = cursor.matches(&FILE_QUERY, self.syntax_tree.root_node(), code.as_bytes());
+        // let mut path = repo_root.clone();
+        let mut result = vec![];
+        for m in matches {
+            for c in m.captures {
+                let text = c.node.utf8_text(code.as_bytes()).unwrap();
+                let path = repo_root.join(text);
+                // eprintln!("repo root: {:?}", repo_root);
+                // eprintln!("path: {:?}", path);
+                let range = c.node.range();
+                result.push(lsp_types::DocumentLink {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: range.start_point.row as u32,
+                            character: range.start_point.column as u32,
+                        },
+                        end: lsp_types::Position {
+                            line: range.end_point.row as u32,
+                            character: range.end_point.column as u32,
+                        },
+                    },
+                    target: Some(
+                        lsp_types::Url::parse(
+                            format!("file://{}", path.to_str().unwrap()).as_str(),
+                        )
+                        .unwrap(),
+                    ),
+                    tooltip: None,
+                    data: None,
+                })
+            }
+        }
+        result
+    }
     pub(crate) fn get_missing_padding_line_number(&self) -> Option<usize> {
         let mut body_lines = self.get_body();
         if let Some((padding_line_number, next_line)) = body_lines.next() {

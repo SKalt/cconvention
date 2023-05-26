@@ -7,6 +7,7 @@ use lsp_types::{
     DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeResult,
     SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url, WillSaveTextDocumentParams,
 };
+use serde::__private::de;
 use std::error::Error;
 mod config;
 mod document;
@@ -79,7 +80,12 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
             more_trigger_character: None,
         }),
 
-        document_link_provider: None,
+        document_link_provider: Some(lsp_types::DocumentLinkOptions {
+            resolve_provider: Some(true),
+            work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                work_done_progress: None,
+            },
+        }),
         // TODO: use the tree-sitter parser to find links to affected files
         // document_link_provider: Some(lsp_types::DocumentLinkOptions {
         //     resolve_provider: Some(true),
@@ -354,7 +360,7 @@ impl Server {
 
         handle!(Completion => handle_completion);
         handle!(Formatting => handle_formatting);
-        // handle!(DocumentLinkRequest => handle_doc_link_request);
+        handle!(DocumentLinkRequest => handle_doc_link_request);
         // sent from the client to the server to compute commands for a given text document and range.
         // The request is triggered when the user moves the cursor into a problem marker
         // TODO: figure out how to resolve commit, issue/PR, and mention links
@@ -624,9 +630,18 @@ impl Server {
     fn handle_doc_link_request(
         &self,
         id: &RequestId,
-        params: DocumentLinkParams,
+        _params: DocumentLinkParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("doc_link_request")
+        eprintln!("doc_link_request: {:?}", _params);
+        eprintln!("{}", self.commit.syntax_tree.root_node().to_sexp());
+        Ok(lsp_server::Response {
+            id: id.clone(),
+            result: Some(
+                serde_json::to_value(self.commit.get_links(self.config.repo_root().unwrap()))
+                    .unwrap(),
+            ),
+            error: None,
+        })
     }
     fn handle_range_formatting(
         &self,
