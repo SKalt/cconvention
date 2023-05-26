@@ -9,8 +9,10 @@ use crate::LANGUAGE;
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
-    static ref BODY_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
+    // static ref BODY_QUERY: tree_sitter::Query =
+    //     tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
+    static ref TRAILER_QUERY: tree_sitter::Query =
+        tree_sitter::Query::new(LANGUAGE.clone(), "(trailer) @trailer",).unwrap();
 }
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
 
@@ -222,10 +224,10 @@ impl GitCommitDocument {
         }
         None
     }
-    pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn get_diagnostics(&self, cutoff: u8) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
-            lints.extend(subject.get_diagnostics(50));
+            lints.extend(subject.get_diagnostics(cutoff));
             let mut body_lines = self.get_body();
             if let Some((padding_line_number, next_line)) = body_lines.next() {
                 if next_line.chars().next().is_some() {

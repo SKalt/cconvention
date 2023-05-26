@@ -280,7 +280,11 @@ impl Server {
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         self.commit = GitCommitDocument::new(params.text_document.text);
-        self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
+        self.publish_diagnostics(
+            params.text_document.uri,
+            self.commit
+                .get_diagnostics(self.config.max_subject_line_length()),
+        );
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -297,7 +301,11 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // let uri = params.text_document.uri;
         self.commit.edit(&params.content_changes);
-        self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
+        self.publish_diagnostics(
+            params.text_document.uri,
+            self.commit
+                .get_diagnostics(self.config.max_subject_line_length()),
+        );
         // self.connection.sender.
         Ok(ServerLoopAction::Continue)
     }
@@ -309,7 +317,11 @@ impl Server {
         if let Some(text) = params.text {
             eprintln!("refreshing syntax tree");
             self.commit = GitCommitDocument::new(text);
-            self.publish_diagnostics(params.text_document.uri, self.commit.get_diagnostics());
+            self.publish_diagnostics(
+                params.text_document.uri,
+                self.commit
+                    .get_diagnostics(self.config.max_subject_line_length()),
+            );
         }
         Ok(ServerLoopAction::Continue)
     }

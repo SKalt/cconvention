@@ -313,11 +313,11 @@ impl Subject {
         super::make_line_diagnostic(self.line_number.into(), start, end, severity, message)
     }
 
-    fn check_line_length(&self, cutoff: usize) -> Option<lsp_types::Diagnostic> {
+    fn check_line_length(&self, cutoff: u8) -> Option<lsp_types::Diagnostic> {
         let n_chars = self.line.chars().count();
-        if n_chars > cutoff {
+        if n_chars > cutoff as usize {
             Some(self.make_diagnostic(
-                cutoff.try_into().unwrap(),
+                cutoff as u32,
                 n_chars.try_into().unwrap(),
                 lsp_types::DiagnosticSeverity::ERROR,
                 format!("line is longer than {} characters", cutoff),
@@ -466,7 +466,7 @@ impl Subject {
         lints
     }
 
-    pub(crate) fn get_diagnostics(&self, cutoff: usize) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn get_diagnostics(&self, cutoff: u8) -> Vec<lsp_types::Diagnostic> {
         let mut lints = Vec::new();
 
         if let Some(lint) = self.check_line_length(cutoff) {

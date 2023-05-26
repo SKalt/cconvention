@@ -24,6 +24,10 @@ pub(crate) trait Config {
             return None;
         }
     }
+    /// 0 means no limit
+    fn max_subject_line_length(&self) -> u8 {
+        50
+    }
     fn source(&self) -> &str; // TODO: change to PathBuf or Url
     fn types(&self) -> Vec<(String, String)>;
     fn scopes(&self) -> Vec<(String, String)>;
