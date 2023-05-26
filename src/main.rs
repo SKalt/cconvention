@@ -86,13 +86,6 @@ fn get_capabilities() -> lsp_types::ServerCapabilities {
                 work_done_progress: None,
             },
         }),
-        // TODO: use the tree-sitter parser to find links to affected files
-        // document_link_provider: Some(lsp_types::DocumentLinkOptions {
-        //     resolve_provider: Some(true),
-        //     work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-        //         work_done_progress: None,
-        //     },
-        // }),
         folding_range_provider: None, // TODO: actually do this though
         // TODO: jump from type/scope -> definition in config
         // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
@@ -372,7 +365,6 @@ impl Server {
         // handle!(ResolveCompletionItem => handle_resolving_completion_item);
         // handle!(SelectionRangeRequest => handle_selection_range_request);
         handle!(OnTypeFormatting => handle_on_type_formatting);
-        // handle!(WillSaveWaitUntil => handle_will_save_wait_until);
 
         let response = Response {
             id: request.id,
@@ -632,8 +624,6 @@ impl Server {
         id: &RequestId,
         _params: DocumentLinkParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        eprintln!("doc_link_request: {:?}", _params);
-        eprintln!("{}", self.commit.syntax_tree.root_node().to_sexp());
         Ok(lsp_server::Response {
             id: id.clone(),
             result: Some(

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crop::{Rope, RopeSlice};
 use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
+use tree_sitter::TreeCursor;
 
 use crate::LANGUAGE;
 
@@ -204,7 +205,62 @@ impl GitCommitDocument {
 
         self
     }
-
+    fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
+        let mut lints = vec![];
+        let _trailer_lines = self.get_trailers_lines();
+        let mut body_lines = self.get_body();
+        let mut trailer_lines = _trailer_lines.iter().peekable();
+        while let Some(trailer_line_number) = trailer_lines.next() {
+            while let Some((body_line_number, line)) = body_lines.next() {
+                if body_line_number as u32 <= *trailer_line_number {
+                    continue;
+                } else if Some(&&(body_line_number as u32)) == trailer_lines.peek() {
+                    break;
+                } else {
+                    // this is a body line that comes after a trailer line
+                    let n_chars = line.chars().count() as u32;
+                    if n_chars == 0 {
+                        continue; // ignore empty lines
+                    }
+                    eprintln!("found body line after trailer: {}", body_line_number);
+                    let diagnostic = make_line_diagnostic(
+                        body_line_number,
+                        0,
+                        n_chars,
+                        lsp_types::DiagnosticSeverity::WARNING, // TODO: consider marking this as an info/hint?
+                        "Message body after trailer".into(),
+                    );
+                    lints.push(diagnostic);
+                }
+            }
+        }
+        lints
+    }
+    /// returns the 1-indexed line number of each trailer
+    fn get_trailers_lines(&self) -> Vec<u32> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let code = self.code.to_string();
+        let matches = cursor.matches(
+            &TRAILER_QUERY,
+            self.syntax_tree.root_node(),
+            code.as_bytes(),
+        );
+        let mut line_numbers = vec![];
+        for m in matches {
+            for c in m.captures {
+                // a trailer can be only one line
+                // line numbers are 0-indexed, and that's expected
+                line_numbers.push(c.node.range().start_point.row as u32);
+                // let trailer_text = trailer.utf8_text(code.as_bytes()).unwrap();
+                // eprintln!("trailer: {}", trailer_text);
+                // eprintln!("\tstart: {:?}", trailer.range().start_point);
+                // eprintln!("\tend: {:?}", trailer.range().end_point);
+            }
+        }
+        line_numbers
+    }
+    /// returns the 0-indexed line number of each body line, including trailers
+    /// and blank lines
     fn get_body(&self) -> impl Iterator<Item = (usize, RopeSlice)> + '_ {
         let subject_line_number = if let Some(subject) = &self.subject {
             subject.line_number + 1
@@ -304,8 +360,10 @@ impl GitCommitDocument {
             };
         };
 
-        { // validation of message body
-             // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
+        {
+            // validation of message body
+            lints.extend(self.check_trailer_arrangement())
+            // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
         }
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
         // "signed-off-by:", etc.
