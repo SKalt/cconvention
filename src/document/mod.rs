@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use crop::{Rope, RopeSlice};
 use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
-use tree_sitter::TreeCursor;
 
 use crate::LANGUAGE;
 
@@ -74,6 +73,7 @@ pub(crate) fn make_line_diagnostic(
     make_diagnostic(line_number, start, line_number, end, severity, message)
 }
 
+/// state management for a git commit document
 impl GitCommitDocument {
     pub(crate) fn new(text: String) -> Self {
         let code = crop::Rope::from(text.clone());
@@ -97,9 +97,9 @@ impl GitCommitDocument {
             subject,
         }
     }
-    fn recompute_indices(&mut self) {
+    fn update_subject(&mut self) {
         self.subject =
-            if let Some((subject_line, line_number)) = self._get_subject_line_with_number() {
+            if let Some((subject_line, line_number)) = self.get_subject_line_with_number() {
                 let subject = Subject::new(subject_line.to_string(), line_number);
                 eprintln!("new subject:");
                 eprintln!("\t{}", subject_line);
@@ -110,45 +110,6 @@ impl GitCommitDocument {
                 None
             };
     }
-    fn _get_subject_line_with_number(&self) -> Option<(String, usize)> {
-        if let Some(node) = self.get_ts_subject_line() {
-            return Some((
-                node.utf8_text(self.code.to_string().as_bytes())
-                    .unwrap()
-                    .to_string(),
-                node.start_position().row,
-            ));
-        }
-        if let Some((text, number)) = get_subject_line(&self.code) {
-            return Some((text.to_string(), number));
-        }
-        None
-    }
-    fn get_ts_subject_line(&self) -> Option<tree_sitter::Node> {
-        let mut cursor = tree_sitter::QueryCursor::new();
-        let names = SUBJECT_QUERY.capture_names();
-        let code = self.code.to_string();
-        let matches = cursor.matches(
-            &SUBJECT_QUERY,
-            self.syntax_tree.root_node(),
-            code.as_bytes(),
-        );
-        for m in matches {
-            for c in m.captures {
-                let name = names[c.index as usize].as_str();
-                match name {
-                    "subject" => {
-                        return Some(c.node);
-                    }
-                    _ => {
-                        continue;
-                    }
-                }
-            }
-        }
-        None
-    }
-
     pub(crate) fn edit(
         &mut self,
         edits: &[lsp_types::TextDocumentContentChangeEvent],
@@ -199,44 +160,71 @@ impl GitCommitDocument {
                 eprintln!("{}", &self.syntax_tree.root_node().to_sexp());
                 // TODO: detect if the subject line changed.
                 // HACK: for now, just recompute the indices
-                self.recompute_indices();
+                self.update_subject();
             }
         }
 
         self
     }
-    fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
-        let mut lints = vec![];
-        let _trailer_lines = self.get_trailers_lines();
-        let mut body_lines = self.get_body();
-        let mut trailer_lines = _trailer_lines.iter().peekable();
-        while let Some(trailer_line_number) = trailer_lines.next() {
-            while let Some((body_line_number, line)) = body_lines.next() {
-                if body_line_number as u32 <= *trailer_line_number {
-                    continue;
-                } else if Some(&&(body_line_number as u32)) == trailer_lines.peek() {
-                    break;
-                } else {
-                    // this is a body line that comes after a trailer line
-                    let n_chars = line.chars().count() as u32;
-                    if n_chars == 0 {
-                        continue; // ignore empty lines
+}
+
+/// navigation & queries
+impl GitCommitDocument {
+    /// returns the 0-indexed line number of each body line, including trailers
+    /// and blank lines
+    fn get_body(&self) -> impl Iterator<Item = (usize, RopeSlice)> + '_ {
+        let subject_line_number = if let Some(subject) = &self.subject {
+            subject.line_number + 1
+        } else {
+            0
+        };
+        return self
+            .code
+            .lines()
+            .enumerate()
+            .skip(subject_line_number.into())
+            .filter(|(_, line)| line.bytes().next() != Some(b'#'));
+    }
+    fn get_subject_line_with_number(&self) -> Option<(String, usize)> {
+        if let Some(node) = self.get_ts_subject_line() {
+            return Some((
+                node.utf8_text(self.code.to_string().as_bytes())
+                    .unwrap()
+                    .to_string(),
+                node.start_position().row,
+            ));
+        }
+        if let Some((text, number)) = get_subject_line(&self.code) {
+            return Some((text.to_string(), number));
+        }
+        None
+    }
+    fn get_ts_subject_line(&self) -> Option<tree_sitter::Node> {
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let names = SUBJECT_QUERY.capture_names();
+        let code = self.code.to_string();
+        let matches = cursor.matches(
+            &SUBJECT_QUERY,
+            self.syntax_tree.root_node(),
+            code.as_bytes(),
+        );
+        for m in matches {
+            for c in m.captures {
+                let name = names[c.index as usize].as_str();
+                match name {
+                    "subject" => {
+                        return Some(c.node);
                     }
-                    eprintln!("found body line after trailer: {}", body_line_number);
-                    let diagnostic = make_line_diagnostic(
-                        body_line_number,
-                        0,
-                        n_chars,
-                        lsp_types::DiagnosticSeverity::WARNING, // TODO: consider marking this as an info/hint?
-                        "Message body after trailer".into(),
-                    );
-                    lints.push(diagnostic);
+                    _ => {
+                        continue;
+                    }
                 }
             }
         }
-        lints
+        None
     }
-    /// returns the 1-indexed line number of each trailer
+
+    /// returns the 0-indexed line number of each trailer
     fn get_trailers_lines(&self) -> Vec<u32> {
         let mut cursor = tree_sitter::QueryCursor::new();
         let code = self.code.to_string();
@@ -258,21 +246,6 @@ impl GitCommitDocument {
             }
         }
         line_numbers
-    }
-    /// returns the 0-indexed line number of each body line, including trailers
-    /// and blank lines
-    fn get_body(&self) -> impl Iterator<Item = (usize, RopeSlice)> + '_ {
-        let subject_line_number = if let Some(subject) = &self.subject {
-            subject.line_number + 1
-        } else {
-            0
-        };
-        return self
-            .code
-            .lines()
-            .enumerate()
-            .skip(subject_line_number.into())
-            .filter(|(_, line)| line.bytes().next() != Some(b'#'));
     }
     pub(crate) fn get_links(&self, repo_root: PathBuf) -> Vec<lsp_types::DocumentLink> {
         let mut cursor = tree_sitter::QueryCursor::new();
@@ -311,15 +284,10 @@ impl GitCommitDocument {
         }
         result
     }
-    pub(crate) fn get_missing_padding_line_number(&self) -> Option<usize> {
-        let mut body_lines = self.get_body();
-        if let Some((padding_line_number, next_line)) = body_lines.next() {
-            if next_line.chars().next().is_some() {
-                return Some(padding_line_number);
-            }
-        }
-        None
-    }
+}
+
+/// linting
+impl GitCommitDocument {
     pub(crate) fn get_diagnostics(&self, cutoff: u8) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
@@ -367,6 +335,48 @@ impl GitCommitDocument {
         }
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
         // "signed-off-by:", etc.
+        lints
+    }
+
+    pub(crate) fn get_missing_padding_line_number(&self) -> Option<usize> {
+        let mut body_lines = self.get_body();
+        if let Some((padding_line_number, next_line)) = body_lines.next() {
+            if next_line.chars().next().is_some() {
+                return Some(padding_line_number);
+            }
+        }
+        None
+    }
+
+    fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
+        let mut lints = vec![];
+        let _trailer_lines = self.get_trailers_lines();
+        let mut body_lines = self.get_body();
+        let mut trailer_lines = _trailer_lines.iter().peekable();
+        while let Some(trailer_line_number) = trailer_lines.next() {
+            while let Some((body_line_number, line)) = body_lines.next() {
+                if body_line_number as u32 <= *trailer_line_number {
+                    continue;
+                } else if Some(&&(body_line_number as u32)) == trailer_lines.peek() {
+                    break;
+                } else {
+                    // this is a body line that comes after a trailer line
+                    let n_chars = line.chars().count() as u32;
+                    if n_chars == 0 {
+                        continue; // ignore empty lines
+                    }
+                    eprintln!("found body line after trailer: {}", body_line_number);
+                    let diagnostic = make_line_diagnostic(
+                        body_line_number,
+                        0,
+                        n_chars,
+                        lsp_types::DiagnosticSeverity::WARNING, // TODO: consider marking this as an info/hint?
+                        "Message body after trailer".into(),
+                    );
+                    lints.push(diagnostic);
+                }
+            }
+        }
         lints
     }
 }
