@@ -17,6 +17,10 @@ lazy_static! {
         tree_sitter::Query::new(LANGUAGE.clone(), "(trailer) @trailer",).unwrap();
     static ref FILE_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(filepath) @text.uri",).unwrap();
+    static ref BAD_TRAILER_QUERY: tree_sitter::Query = tree_sitter::Query::new(
+        LANGUAGE.clone(),
+        "(trailer (token) @token (value)? @value)",
+    ).unwrap();
 }
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
 
@@ -330,7 +334,7 @@ impl GitCommitDocument {
 
         {
             // validation of message body
-            lints.extend(self.check_trailer_arrangement())
+            lints.extend(self.check_trailers())
             // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
         }
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
@@ -365,6 +369,22 @@ impl GitCommitDocument {
         }
         None
     }
+
+    fn check_trailers(&self) -> Vec<lsp_types::Diagnostic> {
+        let mut lints = vec![];
+        let trailer_lines = self.get_trailers_lines();
+        if trailer_lines.is_empty() {
+            return lints; // no trailers => no lints
+        }
+        if let Some(missing_padding_line) = self.check_missing_trailer_padding_line() {
+            lints.push(missing_padding_line);
+        }
+        lints.extend(self.check_trailer_values());
+        lints.extend(self.check_trailer_arrangement());
+        // TODO: check for common trailer misspellings
+        lints
+    }
+
     fn check_missing_trailer_padding_line(&self) -> Option<lsp_types::Diagnostic> {
         if let Some(missing_line) = self.get_missing_trailer_padding_line() {
             Some(make_line_diagnostic(
@@ -379,15 +399,39 @@ impl GitCommitDocument {
         }
     }
 
+    fn check_trailer_values(&self) -> Vec<lsp_types::Diagnostic> {
+        let mut lints = vec![];
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let code = self.code.to_string();
+        let trailers = cursor.matches(
+            &BAD_TRAILER_QUERY,
+            self.syntax_tree.root_node(),
+            code.as_bytes(),
+        );
+        for trailer_match in trailers {
+            debug_assert!(trailer_match.captures.len() == 2);
+            let value = trailer_match.captures[1].node;
+            let value_text = value.utf8_text(&code.as_bytes()).unwrap().trim();
+            if value_text.is_empty() {
+                let key = trailer_match.captures[0].node;
+                let key_text = key.utf8_text(code.as_bytes()).unwrap();
+                let start = value.start_position();
+                let end = value.end_position();
+                lints.push(make_diagnostic(
+                    start.row,
+                    start.column as u32,
+                    end.row,
+                    end.column as u32,
+                    lsp_types::DiagnosticSeverity::ERROR,
+                    format!("Empty value for trailer {:?}", key_text),
+                ));
+            }
+        }
+        lints
+    }
     fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let _trailer_lines = self.get_trailers_lines();
-        if _trailer_lines.is_empty() {
-            return lints; // no trailers => no lints
-        }
-        if let Some(missing_padding) = self.check_missing_trailer_padding_line() {
-            lints.push(missing_padding);
-        }
         let mut trailer_lines = _trailer_lines.iter().peekable();
         let mut body_lines = self.get_body();
         while let Some(trailer_line_number) = trailer_lines.next() {
