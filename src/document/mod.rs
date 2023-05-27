@@ -170,8 +170,8 @@ impl GitCommitDocument {
 
 /// navigation & queries
 impl GitCommitDocument {
-    /// returns the 0-indexed line number of each body line, including trailers
-    /// and blank lines
+    /// returns the 0-indexed line number of each body line, NOT including the subject
+    /// line but including trailers and blank lines
     fn get_body(&self) -> impl Iterator<Item = (usize, RopeSlice)> + '_ {
         let subject_line_number = if let Some(subject) = &self.subject {
             subject.line_number + 1
@@ -338,6 +338,7 @@ impl GitCommitDocument {
         lints
     }
 
+    /// check the first non-subject body line is blank; return the 0-indexed line number if not
     pub(crate) fn get_missing_padding_line_number(&self) -> Option<usize> {
         let mut body_lines = self.get_body();
         if let Some((padding_line_number, next_line)) = body_lines.next() {
@@ -347,12 +348,48 @@ impl GitCommitDocument {
         }
         None
     }
+    /// check there's a blank line before the first trailer line
+    pub(crate) fn get_missing_trailer_padding_line(&self) -> Option<usize> {
+        if let Some(first_trailer_line) = self.get_trailers_lines().first() {
+            let _body_lines = self.get_body();
+            let mut body_lines = _body_lines.peekable();
+            while let Some((n, line)) = body_lines.next() {
+                if let Some((next_line, _)) = body_lines.peek() {
+                    if *(next_line) == (*first_trailer_line) as usize {
+                        if line.chars().next().is_some() {
+                            return Some(n);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+    fn check_missing_trailer_padding_line(&self) -> Option<lsp_types::Diagnostic> {
+        if let Some(missing_line) = self.get_missing_trailer_padding_line() {
+            Some(make_line_diagnostic(
+                missing_line,
+                0,
+                0,
+                lsp_types::DiagnosticSeverity::WARNING,
+                "missing blank line before trailers".into(),
+            ))
+        } else {
+            None
+        }
+    }
 
     fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let _trailer_lines = self.get_trailers_lines();
-        let mut body_lines = self.get_body();
+        if _trailer_lines.is_empty() {
+            return lints; // no trailers => no lints
+        }
+        if let Some(missing_padding) = self.check_missing_trailer_padding_line() {
+            lints.push(missing_padding);
+        }
         let mut trailer_lines = _trailer_lines.iter().peekable();
+        let mut body_lines = self.get_body();
         while let Some(trailer_line_number) = trailer_lines.next() {
             while let Some((body_line_number, line)) = body_lines.next() {
                 if body_line_number as u32 <= *trailer_line_number {
