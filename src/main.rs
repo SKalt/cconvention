@@ -395,15 +395,34 @@ impl Server {
                 },
                 new_text: subject.auto_format(),
             });
-            if let Some(missing_padding_line) = self.commit.get_missing_padding_line_number() {
+            if let Some(missing_subject_padding_line) =
+                self.commit.get_missing_padding_line_number()
+            {
                 fixes.push(lsp_types::TextEdit {
                     range: lsp_types::Range {
                         start: lsp_types::Position {
-                            line: missing_padding_line as u32,
+                            line: missing_subject_padding_line as u32,
                             character: 0,
                         },
                         end: lsp_types::Position {
-                            line: missing_padding_line as u32,
+                            line: missing_subject_padding_line as u32,
+                            character: 0,
+                        },
+                    },
+                    new_text: "\n".into(),
+                })
+            }
+            if let Some(missing_trailer_padding_line) =
+                self.commit.get_missing_trailer_padding_line()
+            {
+                fixes.push(lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: (missing_trailer_padding_line + 1) as u32,
+                            character: 0,
+                        },
+                        end: lsp_types::Position {
+                            line: (missing_trailer_padding_line + 1) as u32,
                             character: 0,
                         },
                     },
