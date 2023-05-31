@@ -109,12 +109,11 @@ impl Config for DefaultConfig {
         // eprintln!("staged files: {:?}", staged_files);
         let applicable_scopes: Vec<(String, String)> = {
             let mut cmd = std::process::Command::new("git");
-            cmd
-                .current_dir(cwd)
+            cmd.current_dir(cwd)
                 .arg("--no-pager")
                 .arg("log")
                 .arg("--format=%s")
-                // .arg("HEAD~1000..HEAD") // TODO: ensure neither we nor git scan more than 1000 commits
+                .arg("--max-count=1000")
                 .arg("--");
             for file in staged_files {
                 cmd.arg(file);
