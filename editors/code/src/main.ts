@@ -1,5 +1,5 @@
-import * as path from "path";
 import type { ExtensionContext } from "vscode";
+import { Uri, window } from "vscode";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -7,7 +7,25 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+const DEFAULT_SERVER = "conventional-commit-language-server";
 let client: LanguageClient; // FIXME: avoid global variable
+// FIXME: potentially resolve the bundled binary
+function getServer(context: ExtensionContext): string {
+  return Uri.joinPath(context.extensionUri, "dist", DEFAULT_SERVER).fsPath;
+}
+
+const log = new (class {
+  private readonly output = window.createOutputChannel(
+    "Git Conventional Commit LS Client"
+  );
+  info(msg: string) {
+    log.write("INFO", msg);
+  }
+  write(label: string, msg: string) {
+    log.output.appendLine(`${label} [${new Date().toISOString()}] ${msg}`);
+  }
+})();
+
 /**
  * activate the language client & server
  * @param context
@@ -15,16 +33,8 @@ let client: LanguageClient; // FIXME: avoid global variable
 export async function activate(
   context: ExtensionContext
 ): Promise<LanguageClient> {
-  const serverPath = context.asAbsolutePath(
-    path.join(
-      // FIXME: figure out how to bundle the server binary with the ts code
-      "..",
-      "..",
-      "target",
-      "debug", // FIXME: use the prod build
-      "conventional-commit-language-server"
-    )
-  );
+  const serverPath = getServer(context);
+  log.info(`using server: ${serverPath}`);
   const serverOptions: ServerOptions = {
     command: serverPath,
     transport: TransportKind.stdio,

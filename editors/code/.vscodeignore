@@ -1,0 +1,9 @@
+*
+!dist/main.min.common.js
+!icon.png
+!dist/server
+!package-lock.json
+
+node_modules
+scripts
+src

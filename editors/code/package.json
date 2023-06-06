@@ -1,9 +1,9 @@
 {
-  "name": "code",
+  "name": "git-conventional-commit-ls-basic",
   "version": "1.0.0",
-  "description": "Highlighting, validation and completion for conventional commit messages",
+  "description": "Highlighting, linting, and completion for conventional commit messages",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.77.0"
   },
   "repository": {
     "type": "git",
@@ -13,8 +13,7 @@
   "main": "./dist/main.min.common.js",
   "scripts": {
     "build": "./scripts/build.sh",
-    "watch": "./scripts/build.sh --watch",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "watch": "./scripts/build.sh --watch"
   },
   "keywords": [
     "git",
@@ -50,12 +49,12 @@
   "activationEvents": [
     "onLanguage:git-commit"
   ],
-  "author": "Steven Kalt",
+  "author": "Steven Kalt <steven@kalt.cloud>",
   "homepage": "https://github.com/skalt/conventional-commit-language-server#TODO",
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^18.15.11",
-    "@types/vscode": "^1.77.0",
+    "@types/vscode": "~1.77.0",
     "@vscode/vsce": "^2.18.0",
     "esbuild": "^0.17.16",
     "js-yaml": "^4.1.0",
