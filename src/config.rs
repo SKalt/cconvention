@@ -28,9 +28,11 @@ pub(crate) trait Config {
     fn max_subject_line_length(&self) -> u8 {
         50
     }
-    fn source(&self) -> &str; // TODO: change to PathBuf or Url
+    /// the source of the configuration
+    fn source(&self) -> &str; // TODO: change to PathBuf or lsp_types::Url
     fn types(&self) -> Vec<(String, String)>;
     fn scopes(&self) -> Vec<(String, String)>;
+    // TODO: separate allowed scopes from suggested scopes
 }
 pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::CompletionItem> {
     let mut result = Vec::with_capacity(items.len());
@@ -63,7 +65,6 @@ lazy_static! {
 }
 
 pub(crate) struct DefaultConfig;
-// TODO: detected scopes
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig
@@ -106,7 +107,6 @@ impl Config for DefaultConfig {
                 }
             })
             .collect();
-        // eprintln!("staged files: {:?}", staged_files);
         let applicable_scopes: Vec<(String, String)> = {
             let mut cmd = std::process::Command::new("git");
             cmd.current_dir(cwd)
@@ -118,7 +118,7 @@ impl Config for DefaultConfig {
             for file in staged_files {
                 cmd.arg(file);
             }
-            eprintln!("running: {:?}", cmd);
+
             let output = cmd
                 .output()
                 .map(|output| {
@@ -154,7 +154,7 @@ impl Config for DefaultConfig {
                 })
                 .collect()
         };
-        // eprintln!("applicable scopes: {:?}", applicable_scopes);
+        // log_debug!("applicable scopes: {:?}", applicable_scopes);
 
         let mut result = Vec::with_capacity(applicable_scopes.len());
 

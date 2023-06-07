@@ -5,10 +5,16 @@ use lsp_types::DidChangeTextDocumentParams;
 use lsp_types::{
     self, CompletionItem, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
     DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeResult,
-    SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url, WillSaveTextDocumentParams,
+    SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
 };
-use serde::__private::de;
 use std::error::Error;
+
+#[cfg(feature = "tracing")]
+use tracing;
+
+#[cfg(feature = "tracing")]
+use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
+
 mod config;
 mod document;
 mod syntax_token_scopes;
@@ -17,10 +23,35 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
+macro_rules! log_info {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "tracing")]
+        tracing::info!($($arg)*);
+    };
+}
+macro_rules! log_debug {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "tracing")]
+        tracing::debug!($($arg)*);
+    };
+}
+
+macro_rules! span {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "tracing")]
+        let span = tracing::span!($($arg)*);
+        #[cfg(feature = "tracing")]
+        let _entered = span.enter();
+    };
+}
+
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = get_capabilities();
     static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
 }
+
+#[cfg(feature = "telemetry")]
+const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
 
 /// a constant (a function that always returns the same thing) that returns the
 /// server's capabilities.  We need to wrap the constant server capabilities in a function
@@ -168,6 +199,7 @@ where
 impl Server {
     /// communicate the server's capabilities with the client
     fn init(&mut self) -> Result<&mut Self, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "init");
         // let capabilities = &params.capabilities;
         let (id, _) = self.connection.initialize_start()?;
         let response = InitializeResult {
@@ -192,6 +224,7 @@ impl Server {
         }
     }
     fn serve(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        log_info!("starting server loop");
         while let Ok(message) = self.connection.receiver.recv() {
             match self.handle_message(message)? {
                 ServerLoopAction::Continue => continue,
@@ -212,6 +245,7 @@ impl Server {
         &mut self,
         message: Message,
     ) -> Result<ServerLoopAction, Box<dyn Error + Sync + Send>> {
+        span!(tracing::Level::INFO, "handle_message");
         match message {
             Message::Request(request) => {
                 // if request.method.as_str() == <lsp_types::request::Shutdown as request::Request>::METHOD {
@@ -222,10 +256,7 @@ impl Server {
                 self.respond(response);
                 Ok(ServerLoopAction::Continue)
             }
-            Message::Response(_resp) => {
-                // eprintln!("response: {:?}", _resp);
-                Ok(ServerLoopAction::Continue)
-            }
+            Message::Response(_resp) => Ok(ServerLoopAction::Continue),
             Message::Notification(notification) => self.handle_notification(notification),
         }
     }
@@ -245,7 +276,6 @@ impl Server {
                 }
             };
         }
-        // eprintln!("notification: {:?}", notification);
         handle!(DidChangeTextDocument => handle_did_change);
         handle!(DidOpenTextDocument => handle_open);
         handle!(Exit => handle_exit);
@@ -259,7 +289,7 @@ impl Server {
         Ok(ServerLoopAction::Continue)
     }
     fn publish_diagnostics(&self, uri: Url, diagnostics: Vec<lsp_types::Diagnostic>) {
-        // eprintln!("publishing diagnostics: {:?}", diagnostics);
+        span!(tracing::Level::INFO, "publish_diagnostics");
         let params = lsp_types::PublishDiagnosticsParams {
             uri,
             diagnostics,
@@ -292,6 +322,7 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // clear the diagnostics for the document
         self.publish_diagnostics(params.text_document.uri, vec![]);
+        // TODO: shut down. Unfortunately, the client has to tell the server to exit.
         Ok(ServerLoopAction::Break)
     }
     fn handle_did_change(
@@ -314,7 +345,7 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // in case incremental updates are messing up the text, try to refresh on-save
         if let Some(text) = params.text {
-            eprintln!("refreshing syntax tree");
+            log_debug!("refreshing syntax tree");
             self.commit = GitCommitDocument::new(text);
             self.publish_diagnostics(
                 params.text_document.uri,
@@ -336,6 +367,7 @@ impl Server {
         &mut self,
         request: lsp_server::Request,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_request");
         use lsp_types::request::*;
 
         macro_rules! handle {
@@ -345,7 +377,6 @@ impl Server {
                 }
             };
         }
-        // eprintln!("request: {:?}", request);
         handle!(SemanticTokensFullRequest => handle_token_full);
         // handle!(SemanticTokensFullDeltaRequest => handle_token_full_delta);
         // handle!(SemanticTokensRangeRequest => handle_token_range);
@@ -438,6 +469,7 @@ impl Server {
         id: &RequestId,
         _params: lsp_types::DocumentFormattingParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_formatting");
         let response = Response {
             id: id.clone(),
             result: Some(serde_json::to_value(self._format()).unwrap()),
@@ -451,21 +483,23 @@ impl Server {
         id: &RequestId,
         params: CompletionParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_completion");
         let position = &params.text_document_position.position;
-        eprintln!(
+        log_debug!(
             "completion position: line {}, column {}",
-            &position.line, &position.character
+            &position.line,
+            &position.character
         );
-        eprintln!("completion context:");
-        eprintln!("\t{}v", " ".repeat(position.character as usize));
-        eprintln!("\t{}", self.commit.code.line(position.line as usize));
+        log_debug!("completion context:");
+        log_debug!("\t{}v", " ".repeat(position.character as usize));
+        log_debug!("\t{}", self.commit.code.line(position.line as usize));
 
         let mut result = vec![];
         let character_index = position.character as usize;
         if let Some(subject) = &self.commit.subject {
             if position.line == subject.line_number as u32 {
                 // consider completions for the cc type, scope
-                eprintln!("\t{}", subject.debug_ranges());
+                log_debug!("\t{}", subject.debug_ranges());
                 // Using <= since the cursor should still trigger completions if it's at the end of a range
                 let type_len = subject.type_text().chars().count();
                 let scope_len = subject.scope_text().chars().count();
@@ -582,6 +616,7 @@ impl Server {
         id: &RequestId,
         params: HoverParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_hover");
         if let Some(subject) = &self.commit.subject {
             let _position = &params.text_document_position_params.position;
             if _position.line == subject.line_number as u32 {
@@ -627,6 +662,7 @@ impl Server {
         id: &RequestId,
         params: lsp_types::SemanticTokensParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_token_full");
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
             data: syntax_token_scopes::handle_all_tokens(&self.commit, params)?,
@@ -643,6 +679,7 @@ impl Server {
         id: &RequestId,
         _params: DocumentLinkParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+        span!(tracing::Level::INFO, "handle_doc_link_request");
         Ok(lsp_server::Response {
             id: id.clone(),
             result: Some(
@@ -771,7 +808,8 @@ impl Server {
         id: &RequestId,
         params: DocumentOnTypeFormattingParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        eprintln!("on_type_formatting: params: {:?}", params);
+        span!(tracing::Level::INFO, "on_type_formatting");
+        log_debug!("on_type_formatting: params: {:?}", params);
         let result: Vec<lsp_types::TextEdit> = self._format();
         return Ok(Response {
             id: id.clone(),
@@ -781,8 +819,40 @@ impl Server {
     }
 }
 
+#[cfg(feature = "telemetry")]
+#[tracing::instrument]
+fn foo() {
+    span!(tracing::Level::TRACE, "foo");
+    tracing::info!("foo");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    tracing::info!("bar");
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    #[cfg(feature = "telemetry")]
+    tracing_subscriber::Registry::default()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_ansi(false),
+        )
+        .with(sentry::integrations::tracing::layer())
+        .init();
+    #[cfg(feature = "telemetry")]
+    let _guard = sentry::init((
+        SENTRY_DSN,
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            auto_session_tracking: true,
+            traces_sample_rate: 1.0,
+            enable_profiling: true,
+            profiles_sample_rate: 1.0,
+            debug: true,
+            ..Default::default()
+        },
+    ));
+    log_info!("starting");
     Server::from_stdio().init()?.serve()?;
-    eprintln!("done");
+    log_info!("done");
     Ok(())
 }

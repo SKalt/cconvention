@@ -7,5 +7,6 @@
     "editor.suggest.showWords": false,
     "editor.acceptSuggestionOnCommitCharacter": false,
     "editor.acceptSuggestionOnEnter": "off"
-  }
+  },
+  "rust-analyzer.cargo.features": "all"
 }

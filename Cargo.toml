@@ -12,11 +12,29 @@ tree-sitter = "0.20.10"
 lazy_static = "1.4.0"
 serde_json = "1"
 serde = "1"
-# opentelemetry = "0.19.0" # local logging only, for the moment.
 crop = "0.3.0"
-tree-sitter-gitcommit = "0.3.2"
+tree-sitter-gitcommit = "0.3.3"
 regex = "1"
+tracing = {version = "0.1", optional = true }
+tracing-subscriber = {version = "0.3", optional = true, features = ["registry"]}
 
+[dependencies.sentry]
+version = "0.31.3"
+features = [
+  # defaults, less "transport"
+  "backtrace", "contexts", "debug-images", "panic",
+  # transport stack
+  "reqwest", "rustls",
+  # profiling + tracing tools
+  "profiling", "tracing",
+]
+optional = true
+
+
+[features]
+tracing = ["dep:tracing", "dep:tracing-subscriber"]
+# TODO: separate error reporting feature
+telemetry = ["dep:sentry", "tracing"]
 
 [profile.release]
 lto = true

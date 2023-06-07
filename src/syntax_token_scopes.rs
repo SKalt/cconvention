@@ -45,7 +45,7 @@ pub(crate) fn handle_all_tokens(
         doc.syntax_tree.root_node(),
         code.as_bytes(),
     );
-    // TODO: use subject line tokenization from syntax_tree.cc_indices
+    // TODO: use subject line tokenization from `doc.subject.unwrap()`
     let names = HIGHLIGHTS_QUERY.capture_names();
     let mut tokens: Vec<lsp_types::SemanticToken> = Vec::new();
     let mut line: u32 = 0;
