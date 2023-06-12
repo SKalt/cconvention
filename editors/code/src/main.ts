@@ -9,8 +9,9 @@ import {
 
 const DEFAULT_SERVER = "conventional-commit-language-server";
 let client: LanguageClient; // FIXME: avoid global variable
-// FIXME: potentially resolve the bundled binary
 function getServer(context: ExtensionContext): string {
+  // TODO: check for a pre-installed binary?
+  // TODO: consent for error-reporting
   return Uri.joinPath(context.extensionUri, "dist", DEFAULT_SERVER).fsPath;
 }
 
@@ -18,7 +19,7 @@ const log = new (class {
   private readonly output = window.createOutputChannel(
     "Git Conventional Commit LS Client"
   );
-  info(msg: string) {
+  info(msg: any) {
     log.write("INFO", msg);
   }
   write(label: string, msg: string) {
@@ -51,11 +52,13 @@ export async function activate(
     serverOptions,
     clientOptions
   );
+  // TODO: close the client after the file closes -- no need to keep the ext running
+  // when there's no .git/COMMIT_EDITMSG open
   client.start();
   context.subscriptions.push(client);
   return client;
 }
 
 export async function deactivate() {
-  return client.stop();
+  return client?.stop();
 }

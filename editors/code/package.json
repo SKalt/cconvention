@@ -50,7 +50,7 @@
     "onLanguage:git-commit"
   ],
   "author": "Steven Kalt <steven@kalt.cloud>",
-  "homepage": "https://github.com/skalt/conventional-commit-language-server#TODO",
+  "homepage": "https://github.com/skalt/conventional-commit-language-server",
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^18.15.11",

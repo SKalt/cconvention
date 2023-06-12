@@ -13,9 +13,9 @@ du -h ./dist/main.min.common.js*
 js-yaml ./src/tmLanguage.yaml >./src/tmLanguage.json
 
 cp ../../target/debug/conventional-commit-language-server ./dist
-vsix_target=./dist/git-conventional-commit-ls.vsix
-rm $vsix_target
-vsce package -o $vsix_target
+# vsix_target=./dist/git-conventional-commit-ls.vsix
+# rm -f $vsix_target
+# vsce package -o $vsix_target
 
-unzip -l $vsix_target
-du -h $vsix_target
+# unzip -l $vsix_target
+# du -h $vsix_target
