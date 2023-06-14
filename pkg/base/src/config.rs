@@ -5,7 +5,7 @@ lazy_static! {
     static ref RE: Regex =
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
-pub(crate) trait Config {
+pub trait Config {
     fn repo_root(&self) -> Option<PathBuf> {
         if let Ok(path) = std::process::Command::new("git")
             .arg("rev-parse")
@@ -64,7 +64,7 @@ lazy_static! {
     static ref GIT: std::process::Command = std::process::Command::new("git");
 }
 
-pub(crate) struct DefaultConfig;
+pub struct DefaultConfig;
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig

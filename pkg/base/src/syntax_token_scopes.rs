@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 pub(crate) fn handle_all_tokens(
-    doc: &crate::GitCommitDocument,
+    doc: &crate::document::GitCommitDocument,
     _params: lsp_types::SemanticTokensParams,
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
     // eprintln!("params: {:?}", params);
