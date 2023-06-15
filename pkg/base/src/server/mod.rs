@@ -1,5 +1,6 @@
 use crate::{config, syntax_token_scopes};
 use crate::{config::Config, document::GitCommitDocument};
+use core::panic;
 use lsp_server::{self, Message, Notification, RequestId, Response};
 use lsp_types::{
     self, CompletionItem, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
@@ -7,13 +8,14 @@ use lsp_types::{
     SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
 };
 use lsp_types::{DidChangeTextDocumentParams, ServerCapabilities};
+use std::collections::HashMap;
 use std::error::Error;
 
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
 pub struct Server {
     config: Box<dyn Config>,
-    commit: GitCommitDocument, // FIXME: use HashMap<K, GitCommitDocument>
+    commits: HashMap<lsp_types::Url, GitCommitDocument>,
     connection: lsp_server::Connection,
 }
 
@@ -80,7 +82,7 @@ impl Server {
         let (conn, _io) = lsp_server::Connection::stdio();
         Server {
             config,
-            commit: GitCommitDocument::new("".to_owned()),
+            commits: HashMap::with_capacity(1), // expect that most of the time there will be exactly 1 document
             connection: conn,
         }
     }
@@ -169,11 +171,15 @@ impl Server {
         &mut self,
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
-        self.commit = GitCommitDocument::new(params.text_document.text);
+        let uri = params.text_document.uri;
+        self.commits.insert(
+            uri.clone(),
+            GitCommitDocument::new(params.text_document.text),
+        );
+        let commit = self.commits.get(&uri).unwrap();
         self.publish_diagnostics(
-            params.text_document.uri,
-            self.commit
-                .get_diagnostics(self.config.max_subject_line_length()),
+            uri,
+            commit.get_diagnostics(self.config.max_subject_line_length()),
         );
         Ok(ServerLoopAction::Continue)
     }
@@ -182,23 +188,37 @@ impl Server {
         params: lsp_types::DidCloseTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // clear the diagnostics for the document
-        self.publish_diagnostics(params.text_document.uri, vec![]);
-        // TODO: shut down. Unfortunately, the client has to tell the server to exit.
-        Ok(ServerLoopAction::Break)
+        let uri = params.text_document.uri;
+        self.commits.remove(&uri);
+        self.publish_diagnostics(uri, vec![]);
+        // TODO: shut down the server if 0 documents are open. Unfortunately,
+        // the client has to tell the server to exit.
+        if self.commits.len() == 0 {
+            Ok(ServerLoopAction::Break)
+        } else {
+            Ok(ServerLoopAction::Continue)
+        }
     }
     fn handle_did_change(
         &mut self,
         params: DidChangeTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
-        // let uri = params.text_document.uri;
-        self.commit.edit(&params.content_changes);
-        self.publish_diagnostics(
-            params.text_document.uri,
-            self.commit
-                .get_diagnostics(self.config.max_subject_line_length()),
-        );
+        let uri = params.text_document.uri;
+        let max_subject_line_length = self.config.max_subject_line_length();
+        let diagnostics = {
+            let commit = self.commits.get_mut(&uri);
+            if commit.is_none() {
+                // return Err(Box::new(Error::format!("No document {uri}")));
+                panic!("No document {uri}")
+            }
+            let commit = commit.unwrap();
+            commit.edit(&params.content_changes);
+            commit.get_diagnostics(max_subject_line_length)
+        };
+        self.publish_diagnostics(uri, diagnostics);
+        return Ok(ServerLoopAction::Continue);
+
         // self.connection.sender.
-        Ok(ServerLoopAction::Continue)
     }
     fn handle_save(
         &mut self,
@@ -206,12 +226,12 @@ impl Server {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         // in case incremental updates are messing up the text, try to refresh on-save
         if let Some(text) = params.text {
+            let uri = params.text_document.uri;
             log_debug!("refreshing syntax tree");
-            self.commit = GitCommitDocument::new(text);
+            let commit = GitCommitDocument::new(text);
             self.publish_diagnostics(
-                params.text_document.uri,
-                self.commit
-                    .get_diagnostics(self.config.max_subject_line_length()),
+                uri,
+                commit.get_diagnostics(self.config.max_subject_line_length()),
             );
         }
         Ok(ServerLoopAction::Continue)
@@ -270,73 +290,23 @@ impl Server {
         // eprintln!("response: {:?}", response);
         Ok(response)
     }
-    fn _format(&self) -> Vec<lsp_types::TextEdit> {
-        let mut fixes = Vec::<lsp_types::TextEdit>::new();
-        if let Some(subject) = &self.commit.subject {
-            // always auto-format the subject line, if any
-            fixes.push(lsp_types::TextEdit {
-                range: lsp_types::Range {
-                    start: lsp_types::Position {
-                        line: subject.line_number as u32,
-                        character: 0,
-                    },
-                    end: lsp_types::Position {
-                        line: subject.line_number as u32,
-                        character: subject.line.chars().count() as u32,
-                    },
-                },
-                new_text: subject.auto_format(),
-            });
-            if let Some(missing_subject_padding_line) =
-                self.commit.get_missing_padding_line_number()
-            {
-                fixes.push(lsp_types::TextEdit {
-                    range: lsp_types::Range {
-                        start: lsp_types::Position {
-                            line: missing_subject_padding_line as u32,
-                            character: 0,
-                        },
-                        end: lsp_types::Position {
-                            line: missing_subject_padding_line as u32,
-                            character: 0,
-                        },
-                    },
-                    new_text: "\n".into(),
-                })
-            }
-            if let Some(missing_trailer_padding_line) =
-                self.commit.get_missing_trailer_padding_line()
-            {
-                fixes.push(lsp_types::TextEdit {
-                    range: lsp_types::Range {
-                        start: lsp_types::Position {
-                            line: (missing_trailer_padding_line + 1) as u32,
-                            character: 0,
-                        },
-                        end: lsp_types::Position {
-                            line: (missing_trailer_padding_line + 1) as u32,
-                            character: 0,
-                        },
-                    },
-                    new_text: "\n".into(),
-                })
-            }
-        };
-        // TODO: ensure trailers are at the end of the commit message
-        fixes
-    }
     fn handle_formatting(
         &self,
         id: &RequestId,
-        _params: lsp_types::DocumentFormattingParams,
+        params: lsp_types::DocumentFormattingParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_formatting");
-        let response = Response {
-            id: id.clone(),
-            result: Some(serde_json::to_value(self._format()).unwrap()),
-            error: None,
-        };
-        Ok(response)
+        let uri = params.text_document.uri;
+        if let Some(commit) = self.commits.get(&uri) {
+            let response = Response {
+                id: id.clone(),
+                result: Some(serde_json::to_value(commit.format()).unwrap()),
+                error: None,
+            };
+            Ok(response)
+        } else {
+            panic!("No such document")
+        }
     }
 
     fn handle_completion(
@@ -345,7 +315,12 @@ impl Server {
         params: CompletionParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_completion");
-        let position = &params.text_document_position.position;
+        let uri = params.text_document_position.text_document.uri;
+        if self.commits.get(&uri).is_none() {
+            panic!("no such document {uri}")
+        }
+        let commit = self.commits.get(&uri).unwrap();
+        let position: &lsp_types::Position = &params.text_document_position.position;
         log_debug!(
             "completion position: line {}, column {}",
             &position.line,
@@ -353,11 +328,11 @@ impl Server {
         );
         log_debug!("completion context:");
         log_debug!("\t{}v", " ".repeat(position.character as usize));
-        log_debug!("\t{}", self.commit.code.line(position.line as usize));
+        log_debug!("\t{}", commit.code.line(position.line as usize));
 
         let mut result = vec![];
         let character_index = position.character as usize;
-        if let Some(subject) = &self.commit.subject {
+        if let Some(subject) = &commit.subject {
             if position.line == subject.line_number as u32 {
                 // consider completions for the cc type, scope
                 log_debug!("\t{}", subject.debug_ranges());
@@ -381,7 +356,7 @@ impl Server {
                 }
             }
         } else {
-            let line = self.commit.code.line(position.line as usize).to_string(); // panics if line is out of bounds
+            let line = commit.code.line(position.line as usize).to_string(); // panics if line is out of bounds
             if let Some(c) = line.chars().next() {
                 if c == '#' {
                     // this is a commented line
@@ -478,7 +453,13 @@ impl Server {
         params: HoverParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_hover");
-        if let Some(subject) = &self.commit.subject {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let commit = self.commits.get(uri);
+        if commit.is_none() {
+            panic!("no such document {uri}");
+        }
+        let commit = commit.unwrap();
+        if let Some(subject) = &commit.subject {
             let _position = &params.text_document_position_params.position;
             if _position.line == subject.line_number as u32 {
                 let _type_text = subject.type_text();
@@ -524,9 +505,15 @@ impl Server {
         params: lsp_types::SemanticTokensParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_token_full");
+        let uri = &params.text_document.uri;
+        let commit = self.commits.get_mut(uri);
+        if commit.is_none() {
+            panic!("no such document {uri}")
+        }
+        let commit = commit.unwrap();
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
-            data: syntax_token_scopes::handle_all_tokens(&self.commit, params)?,
+            data: syntax_token_scopes::handle_all_tokens(&commit, params)?,
         });
         let result: Response = Response {
             id: id.clone(),
@@ -538,14 +525,19 @@ impl Server {
     fn handle_doc_link_request(
         &self,
         id: &RequestId,
-        _params: DocumentLinkParams,
+        params: DocumentLinkParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_doc_link_request");
+        let uri = &params.text_document.uri;
+        let commit = self.commits.get(uri);
+        if commit.is_none() {
+            panic!("no such document {uri}");
+        }
+        let commit = commit.unwrap();
         Ok(lsp_server::Response {
             id: id.clone(),
             result: Some(
-                serde_json::to_value(self.commit.get_links(self.config.repo_root().unwrap()))
-                    .unwrap(),
+                serde_json::to_value(commit.get_links(self.config.repo_root().unwrap())).unwrap(),
             ),
             error: None,
         })
@@ -671,7 +663,13 @@ impl Server {
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "on_type_formatting");
         log_debug!("on_type_formatting: params: {:?}", params);
-        let result: Vec<lsp_types::TextEdit> = self._format();
+        let uri = &params.text_document_position.text_document.uri;
+        let commit = self.commits.get(uri);
+        if commit.is_none() {
+            panic!("no such document {uri}");
+        }
+        let commit = commit.unwrap();
+        let result: Vec<lsp_types::TextEdit> = commit.format();
         return Ok(Response {
             id: id.clone(),
             result: Some(serde_json::to_value(result).unwrap()),

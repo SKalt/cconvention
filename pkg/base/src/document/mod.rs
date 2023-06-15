@@ -461,3 +461,57 @@ impl GitCommitDocument {
         lints
     }
 }
+
+impl GitCommitDocument {
+    pub(crate) fn format(&self) -> Vec<lsp_types::TextEdit> {
+        let mut fixes = Vec::<lsp_types::TextEdit>::new();
+        if let Some(subject) = &self.subject {
+            // always auto-format the subject line, if any
+            fixes.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: lsp_types::Position {
+                        line: subject.line_number as u32,
+                        character: 0,
+                    },
+                    end: lsp_types::Position {
+                        line: subject.line_number as u32,
+                        character: subject.line.chars().count() as u32,
+                    },
+                },
+                new_text: subject.auto_format(),
+            });
+            if let Some(missing_subject_padding_line) = self.get_missing_padding_line_number() {
+                fixes.push(lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: missing_subject_padding_line as u32,
+                            character: 0,
+                        },
+                        end: lsp_types::Position {
+                            line: missing_subject_padding_line as u32,
+                            character: 0,
+                        },
+                    },
+                    new_text: "\n".into(),
+                })
+            }
+            if let Some(missing_trailer_padding_line) = self.get_missing_trailer_padding_line() {
+                fixes.push(lsp_types::TextEdit {
+                    range: lsp_types::Range {
+                        start: lsp_types::Position {
+                            line: (missing_trailer_padding_line + 1) as u32,
+                            character: 0,
+                        },
+                        end: lsp_types::Position {
+                            line: (missing_trailer_padding_line + 1) as u32,
+                            character: 0,
+                        },
+                    },
+                    new_text: "\n".into(),
+                })
+            }
+        };
+        // TODO: ensure trailers are at the end of the commit message
+        fixes
+    }
+}
