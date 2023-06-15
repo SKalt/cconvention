@@ -6,34 +6,34 @@
       "command": "build",
       "problemMatcher": ["$rustc"],
       "group": "build",
-      "label": "Build Server"
+      "label": "Build Basic Server"
     },
     {
-      "label": "Build Extension in Background",
+      "label": "Build Basic Extension in Background",
       "group": "build",
       "type": "npm",
       "script": "watch",
-      "path": "editors/code/",
+      "path": "editors/code/basic",
       "problemMatcher": {
         "base": "$tsc-watch",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/"]
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
       },
       "isBackground": true
     },
     {
-      "label": "Build Extension",
+      "label": "Build Basic Extension",
       "group": "build",
       "type": "npm",
       "script": "build",
-      "path": "editors/code/",
+      "path": "editors/code/basic",
       "problemMatcher": {
         "base": "$tsc",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/"]
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
       }
     },
     {
-      "label": "Build Server and Extension",
-      "dependsOn": ["Build Server", "Build Extension"],
+      "label": "Build Basic Server and Extension",
+      "dependsOn": ["Build Basic Server", "Build Basic Extension"],
       "problemMatcher": "$rustc"
     }
   ]

@@ -3,23 +3,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Client",
+      "name": "Launch Basic Client",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceRoot}/editors/code",
+        "--extensionDevelopmentPath=${workspaceRoot}/editors/code/basic",
         "--disable-extensions",
         "${workspaceRoot}/examples"
       ],
       "outFiles": ["${workspaceRoot}/client/dist/*.js"],
-      "preLaunchTask": "Build Server and Extension"
-    },
-    {
-      "name": "Attach to LS",
-      "type": "lldb",
-      "request": "attach",
-      "program": "${workspaceRoot}/target/debug/conventional-commit-language-server"
+      "preLaunchTask": "Build Basic Server and Extension"
     }
   ]
 }
