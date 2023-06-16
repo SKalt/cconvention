@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
-use conventional_commit_language_server_basic::{config, log_info, server, syntax_token_scopes};
+use base::{config, log_info, server, syntax_token_scopes};
 
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
@@ -15,7 +15,7 @@ lazy_static! {
 #[cfg(feature = "telemetry")]
 const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
 
-/// a constant (a function that always returns the same thing) that returns the
+/// a constant (a function that always returns the "same" thing) that returns the
 /// server's capabilities.  We need to wrap the constant server capabilities in a function
 /// since the server's capabilities include a `Vec` which allocates memory.
 fn get_capabilities() -> lsp_types::ServerCapabilities {
@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         },
     ));
     log_info!("starting");
-    Server::from_stdio(Box::new(config::DefaultConfig))
+    Server::from_stdio(config::DefaultConfig)
         .init(&CAPABILITIES)?
         .serve()?;
     log_info!("done");

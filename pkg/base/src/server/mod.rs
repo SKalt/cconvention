@@ -3,9 +3,8 @@ use crate::{config::Config, document::GitCommitDocument};
 use core::panic;
 use lsp_server::{self, Message, Notification, RequestId, Response};
 use lsp_types::{
-    self, CompletionItem, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
-    DocumentOnTypeFormattingParams, DocumentRangeFormattingParams, HoverParams, InitializeResult,
-    SelectionRangeParams, SemanticTokensLegend, ServerInfo, Url,
+    self, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
+    DocumentOnTypeFormattingParams, HoverParams, InitializeResult, ServerInfo, Url,
 };
 use lsp_types::{DidChangeTextDocumentParams, ServerCapabilities};
 use std::collections::HashMap;
@@ -13,8 +12,8 @@ use std::error::Error;
 
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
-pub struct Server {
-    config: Box<dyn Config>,
+pub struct Server<C: Config> {
+    config: C,
     commits: HashMap<lsp_types::Url, GitCommitDocument>,
     connection: lsp_server::Connection,
 }
@@ -56,7 +55,7 @@ where
 }
 
 // basic methods
-impl Server {
+impl<C: Config> Server<C> {
     /// communicate the server's capabilities with the client
     pub fn init(
         &mut self,
@@ -69,7 +68,8 @@ impl Server {
             capabilities: cap.clone(),
             server_info: Some(ServerInfo {
                 name: "conventional-commit-language-server".to_owned(),
-                version: None, // TODO: send over server info based on current build
+                // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
+                version: std::option_env!("CARGO_PKG_VERSION").map(|s| s.to_string()),
             }),
         };
         self.connection
@@ -78,7 +78,7 @@ impl Server {
     }
 
     /// create a fresh server with a stdio-based connection.
-    pub fn from_stdio(config: Box<dyn Config>) -> Self {
+    pub fn from_stdio(config: C) -> Self {
         let (conn, _io) = lsp_server::Connection::stdio();
         Server {
             config,
@@ -126,7 +126,7 @@ impl Server {
 }
 
 // notification handlers
-impl Server {
+impl<C: Config> Server<C> {
     fn handle_notification(
         &mut self,
         notification: lsp_server::Notification,
@@ -177,10 +177,7 @@ impl Server {
             GitCommitDocument::new(params.text_document.text),
         );
         let commit = self.commits.get(&uri).unwrap();
-        self.publish_diagnostics(
-            uri,
-            commit.get_diagnostics(self.config.max_subject_line_length()),
-        );
+        self.publish_diagnostics(uri, commit.get_diagnostics(&self.config));
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -204,7 +201,6 @@ impl Server {
         params: DidChangeTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         let uri = params.text_document.uri;
-        let max_subject_line_length = self.config.max_subject_line_length();
         let diagnostics = {
             let commit = self.commits.get_mut(&uri);
             if commit.is_none() {
@@ -213,7 +209,7 @@ impl Server {
             }
             let commit = commit.unwrap();
             commit.edit(&params.content_changes);
-            commit.get_diagnostics(max_subject_line_length)
+            commit.get_diagnostics(&self.config)
         };
         self.publish_diagnostics(uri, diagnostics);
         return Ok(ServerLoopAction::Continue);
@@ -229,10 +225,7 @@ impl Server {
             let uri = params.text_document.uri;
             log_debug!("refreshing syntax tree");
             let commit = GitCommitDocument::new(text);
-            self.publish_diagnostics(
-                uri,
-                commit.get_diagnostics(self.config.max_subject_line_length()),
-            );
+            self.publish_diagnostics(uri, commit.get_diagnostics(&self.config));
         }
         Ok(ServerLoopAction::Continue)
     }
@@ -243,7 +236,7 @@ impl Server {
 }
 
 // request handlers for specific methods
-impl Server {
+impl<C: Config> Server<C> {
     fn handle_request(
         &mut self,
         request: lsp_server::Request,
@@ -342,9 +335,9 @@ impl Server {
                 let rest_len = subject.rest_text().chars().count();
                 if character_index <= type_len {
                     // handle type completions
-                    result.extend(config::as_completion(&self.config.types()));
+                    result.extend(config::as_completion(&self.config.type_suggestions()));
                 } else if character_index <= scope_len + type_len {
-                    result.extend(config::as_completion(&self.config.scopes()));
+                    result.extend(config::as_completion(&self.config.scope_suggestions()));
                     // eprintln!("scope completions: {:?}", result);
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
@@ -428,7 +421,7 @@ impl Server {
                             });
                         }
 
-                        eprintln!("end of message completions?");
+                        log_debug!("end of message completions?");
                     }
                 }
             }
@@ -467,7 +460,7 @@ impl Server {
                 if _position.character <= _type_len as u32 {
                     if let Some((_, doc)) = self
                         .config
-                        .types()
+                        .type_suggestions()
                         .iter()
                         .find(|(type_, _doc)| type_.as_str() == _type_text)
                     {
@@ -542,20 +535,20 @@ impl Server {
             error: None,
         })
     }
-    fn handle_range_formatting(
-        &self,
-        id: &RequestId,
-        params: DocumentRangeFormattingParams,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("range_formatting")
-    }
-    fn handle_resolving_completion_item(
-        &self,
-        id: &RequestId,
-        params: CompletionItem,
-    ) -> Result<Response, Box<dyn Error + Send + Sync>> {
-        todo!("resolving_completion_item")
-    }
+    // fn handle_range_formatting(
+    //     &self,
+    //     id: &RequestId,
+    //     params: DocumentRangeFormattingParams,
+    // ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+    //     todo!("range_formatting")
+    // }
+    // fn handle_resolving_completion_item(
+    //     &self,
+    //     id: &RequestId,
+    //     params: CompletionItem,
+    // ) -> Result<Response, Box<dyn Error + Send + Sync>> {
+    //     todo!("resolving_completion_item")
+    // }
     /// see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_selectionRange
     // fn handle_selection_range_request(
     //     &self,

@@ -1,5 +1,5 @@
 [package]
-name = "conventional-commit-language-server-basic"
+name = "base"
 version = "0.1.0"
 edition = "2021"
 license = "APACHE-2"

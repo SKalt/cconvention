@@ -1,3 +1,4 @@
+pub mod lints;
 pub(crate) mod lookaround;
 pub(crate) mod subject;
 use std::path::PathBuf;
@@ -7,6 +8,8 @@ use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
 
 use crate::LANGUAGE;
+
+use self::lints::LintConfig;
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
@@ -21,8 +24,12 @@ lazy_static! {
         LANGUAGE.clone(),
         "(trailer (token) @token (value)? @value)",
     ).unwrap();
+
+    // static ref MISSING_BODY_QUERY: tree_sitter::Query = tree_sitter::Query::new(
+    //     LANGUAGE.clone(),
+    //     "(message) @message",
+    // ).unwrap();
 }
-pub const LINT_PROVIDER: &str = "git conventional commit language server";
 
 pub struct GitCommitDocument {
     pub code: crop::Rope,
@@ -38,43 +45,6 @@ fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
         }
     }
     None
-}
-
-fn make_diagnostic(
-    start_line: usize,
-    start_char: u32,
-    end_line: usize,
-    end_char: u32,
-    severity: lsp_types::DiagnosticSeverity,
-    message: String,
-) -> lsp_types::Diagnostic {
-    lsp_types::Diagnostic {
-        source: Some(LINT_PROVIDER.to_string()),
-        range: lsp_types::Range {
-            start: lsp_types::Position {
-                line: start_line as u32,
-                character: start_char,
-            },
-            end: lsp_types::Position {
-                line: end_line as u32,
-                character: end_char,
-            },
-        },
-        severity: Some(severity),
-        message,
-        ..Default::default()
-    }
-}
-
-/// make a diagnostic for a single line
-pub(crate) fn make_line_diagnostic(
-    line_number: usize,
-    start: u32,
-    end: u32,
-    severity: lsp_types::DiagnosticSeverity,
-    message: String,
-) -> lsp_types::Diagnostic {
-    make_diagnostic(line_number, start, line_number, end, severity, message)
 }
 
 /// state management for a git commit document
@@ -105,9 +75,9 @@ impl GitCommitDocument {
         self.subject =
             if let Some((subject_line, line_number)) = self.get_subject_line_with_number() {
                 let subject = Subject::new(subject_line.to_string(), line_number);
-                eprintln!("new subject:");
-                eprintln!("\t{}", subject_line);
-                eprintln!("\t{}", subject.debug_ranges());
+                log_debug!("new subject:");
+                log_debug!("\t{}", subject_line);
+                log_debug!("\t{}", subject.debug_ranges());
 
                 Some(subject)
             } else {
@@ -128,9 +98,8 @@ impl GitCommitDocument {
             let start_byte = find_byte_offset(&self.code, range.start);
             let end_byte = find_byte_offset(&self.code, range.end);
 
-            eprintln!("start..end byte: {}..{}", start_byte, end_byte);
+            log_debug!("start..end byte: {}..{}", start_byte, end_byte);
             self.code.replace(start_byte..end_byte, &edit.text);
-            eprintln!("new code:\n{}", self.code.to_string());
             let new_end_position = match edit.text.rfind('\n') {
                 Some(ind) => {
                     let num_newlines = edit.text.bytes().filter(|&c| c == b'\n').count();
@@ -144,7 +113,7 @@ impl GitCommitDocument {
                     column: range.end.character as usize + edit.text.len(),
                 },
             };
-            eprintln!("found end position, submitting edit");
+            log_debug!("found end position, submitting edit");
             self.syntax_tree.edit(&tree_sitter::InputEdit {
                 start_byte,
                 old_end_byte: end_byte,
@@ -153,7 +122,7 @@ impl GitCommitDocument {
                 old_end_position: to_point(range.end),
                 new_end_position,
             });
-            eprintln!("parsing");
+            log_debug!("parsing");
             {
                 // update the semantic ranges --------------------------------------
                 let prev_tree = &self.syntax_tree;
@@ -161,7 +130,7 @@ impl GitCommitDocument {
                     .parser
                     .parse(&(self.code.to_string()), Some(prev_tree))
                     .unwrap();
-                eprintln!("{}", &self.syntax_tree.root_node().to_sexp());
+                log_info!("{}", &self.syntax_tree.root_node().to_sexp());
                 // TODO: detect if the subject line changed.
                 // HACK: for now, just recompute the indices
                 self.update_subject();
@@ -290,21 +259,23 @@ impl GitCommitDocument {
     }
 }
 
+// TODO: extract all lints into standalone functions?
+
 /// linting
 impl GitCommitDocument {
-    pub(crate) fn get_diagnostics(&self, cutoff: u8) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn get_diagnostics(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
-            lints.extend(subject.get_diagnostics(cutoff));
+            lints.extend(subject.get_diagnostics(config));
             let mut body_lines = self.get_body();
             if let Some((padding_line_number, next_line)) = body_lines.next() {
                 if next_line.chars().next().is_some() {
-                    lints.push(make_line_diagnostic(
+                    lints.push(config.make_line_lint(
+                        "body-leading-blank",
+                        "there should be a blank line between the subject and the body".into(),
                         padding_line_number,
                         0,
                         0,
-                        lsp_types::DiagnosticSeverity::WARNING,
-                        "there should be a blank line between the subject and the body".into(),
                     ));
                 } else {
                     // the first body line is blank
@@ -314,7 +285,9 @@ impl GitCommitDocument {
                         if line.chars().next().is_some() && line.chars().any(|c| !c.is_whitespace())
                         {
                             if n_blank_lines > 1 {
-                                lints.push(make_diagnostic(
+                                lints.push(config.make_lint(
+                                    "body-leading-blank", // TODO: make distinct code? Parametrize?
+                                    format!("{n_blank_lines} blank lines between subject and body"),
                                     padding_line_number,
                                     0,
                                     line_number,
@@ -322,8 +295,6 @@ impl GitCommitDocument {
                                     // and enumeration line numbers are 0-indexed, `first_body_line_number`
                                     // is the line number of the preceding blank line
                                     0,
-                                    lsp_types::DiagnosticSeverity::WARNING,
-                                    format!("{n_blank_lines} blank lines between subject and body"),
                                 ));
                             }
                             break;
@@ -338,7 +309,7 @@ impl GitCommitDocument {
 
         {
             // validation of message body
-            lints.extend(self.check_trailers())
+            lints.extend(self.check_trailers(config))
             // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
         }
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
@@ -356,6 +327,7 @@ impl GitCommitDocument {
         }
         None
     }
+
     /// check there's a blank line before the first trailer line
     pub(crate) fn get_missing_trailer_padding_line(&self) -> Option<usize> {
         if let Some(first_trailer_line) = self.get_trailers_lines().first() {
@@ -374,36 +346,39 @@ impl GitCommitDocument {
         None
     }
 
-    fn check_trailers(&self) -> Vec<lsp_types::Diagnostic> {
+    fn check_trailers(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let trailer_lines = self.get_trailers_lines();
         if trailer_lines.is_empty() {
             return lints; // no trailers => no lints
         }
-        if let Some(missing_padding_line) = self.check_missing_trailer_padding_line() {
+        if let Some(missing_padding_line) = self.check_missing_trailer_padding_line(config) {
             lints.push(missing_padding_line);
         }
-        lints.extend(self.check_trailer_values());
-        lints.extend(self.check_trailer_arrangement());
+        lints.extend(self.check_trailer_values(config));
+        lints.extend(self.check_trailer_arrangement(config));
         // TODO: check for common trailer misspellings
         lints
     }
 
-    fn check_missing_trailer_padding_line(&self) -> Option<lsp_types::Diagnostic> {
+    fn check_missing_trailer_padding_line(
+        &self,
+        config: &dyn LintConfig,
+    ) -> Option<lsp_types::Diagnostic> {
         if let Some(missing_line) = self.get_missing_trailer_padding_line() {
-            Some(make_line_diagnostic(
+            Some(config.make_line_lint(
+                "footer-leading-blank",
+                "missing blank line before trailers".into(),
                 missing_line,
                 0,
                 0,
-                lsp_types::DiagnosticSeverity::WARNING,
-                "missing blank line before trailers".into(),
             ))
         } else {
             None
         }
     }
 
-    fn check_trailer_values(&self) -> Vec<lsp_types::Diagnostic> {
+    fn check_trailer_values(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let mut cursor = tree_sitter::QueryCursor::new();
         let code = self.code.to_string();
@@ -421,19 +396,19 @@ impl GitCommitDocument {
                 let key_text = key.utf8_text(code.as_bytes()).unwrap();
                 let start = value.start_position();
                 let end = value.end_position();
-                lints.push(make_diagnostic(
+                lints.push(config.make_lint(
+                    "footer-empty",
+                    format!("Empty value for trailer {:?}", key_text),
                     start.row,
                     start.column as u32,
                     end.row,
                     end.column as u32,
-                    lsp_types::DiagnosticSeverity::ERROR,
-                    format!("Empty value for trailer {:?}", key_text),
                 ));
             }
         }
         lints
     }
-    fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
+    fn check_trailer_arrangement(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let _trailer_lines = self.get_trailers_lines();
         let mut trailer_lines = _trailer_lines.iter().peekable();
@@ -450,13 +425,13 @@ impl GitCommitDocument {
                     if n_chars == 0 {
                         continue; // ignore empty lines
                     }
-                    eprintln!("found body line after trailer: {}", body_line_number);
-                    let diagnostic = make_line_diagnostic(
+                    log_debug!("found body line after trailer: {}", body_line_number);
+                    let diagnostic = config.make_line_lint(
+                        "INVALID",
+                        "Message body after trailer.".into(),
                         body_line_number,
                         0,
                         n_chars,
-                        lsp_types::DiagnosticSeverity::WARNING, // TODO: consider marking this as an info/hint?
-                        "Message body after trailer".into(),
                     );
                     lints.push(diagnostic);
                 }

@@ -1,11 +1,13 @@
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::document::lints::LintConfig;
+
 lazy_static! {
     static ref RE: Regex =
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
-pub trait Config {
+pub trait Config: LintConfig {
     fn repo_root(&self) -> Option<PathBuf> {
         if let Ok(path) = std::process::Command::new("git")
             .arg("rev-parse")
@@ -24,64 +26,16 @@ pub trait Config {
             return None;
         }
     }
-    /// 0 means no limit
-    fn max_subject_line_length(&self) -> u8 {
-        50
-    }
     /// the source of the configuration
     fn source(&self) -> &str; // TODO: change to PathBuf or lsp_types::Url
-    fn types(&self) -> Vec<(String, String)>;
-    fn scopes(&self) -> Vec<(String, String)>;
-    // TODO: separate allowed scopes from suggested scopes
-}
-pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::CompletionItem> {
-    let mut result = Vec::with_capacity(items.len());
-    for (label, detail) in items {
-        let mut item = lsp_types::CompletionItem::new_simple(label.to_owned(), detail.to_owned());
-        item.kind = Some(lsp_types::CompletionItemKind::ENUM_MEMBER);
-        result.push(item);
-    }
-    result
-}
-const DEFAULT_TYPES: &[(&str, &str)] = &[
-    ("feat", "adds a new feature"),
-    ("fix", "fixes a bug"),
-    ("docs", "changes only the documentation"),
-    (
-        "style",
-        "changes the style but not the meaning of the code (such as formatting)",
-    ),
-    ("perf", "improves performance"),
-    ("test", "adds or corrects tests"),
-    ("build", "changes the build system or external dependencies"),
-    ("chore", "changes outside the code, docs, or tests"),
-    ("ci", "changes to the Continuous Integration (CI) system"),
-    ("refactor", "changes the code without changing behavior"),
-    ("revert", "reverts prior changes"),
-];
-
-lazy_static! {
-    static ref GIT: std::process::Command = std::process::Command::new("git");
-}
-
-pub struct DefaultConfig;
-impl DefaultConfig {
-    pub fn new() -> Self {
-        DefaultConfig
-    }
-}
-impl Config for DefaultConfig {
-    fn source(&self) -> &str {
-        "<default>"
-    }
-    fn types(&self) -> Vec<(String, String)> {
+    fn type_suggestions(&self) -> Vec<(String, String)> {
         let mut result = Vec::with_capacity(DEFAULT_TYPES.len());
         for (label, detail) in DEFAULT_TYPES {
             result.push((label.to_string(), detail.to_string()));
         }
         result
     }
-    fn scopes(&self) -> Vec<(String, String)> {
+    fn scope_suggestions(&self) -> Vec<(String, String)> {
         // guess the scopes from the staged files
         let cwd = self.repo_root().unwrap_or_else(|| PathBuf::from("."));
         let staged_files: Vec<String> = std::process::Command::new("git")
@@ -162,5 +116,49 @@ impl Config for DefaultConfig {
             result.push((label, detail));
         }
         result
+    }
+}
+
+pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::CompletionItem> {
+    let mut result = Vec::with_capacity(items.len());
+    for (label, detail) in items {
+        let mut item = lsp_types::CompletionItem::new_simple(label.to_owned(), detail.to_owned());
+        item.kind = Some(lsp_types::CompletionItemKind::ENUM_MEMBER);
+        result.push(item);
+    }
+    result
+}
+const DEFAULT_TYPES: &[(&str, &str)] = &[
+    ("feat", "adds a new feature"),
+    ("fix", "fixes a bug"),
+    ("docs", "changes only the documentation"),
+    (
+        "style",
+        "changes the style but not the meaning of the code (such as formatting)",
+    ),
+    ("perf", "improves performance"),
+    ("test", "adds or corrects tests"),
+    ("build", "changes the build system or external dependencies"),
+    ("chore", "changes outside the code, docs, or tests"),
+    ("ci", "changes to the Continuous Integration (CI) system"),
+    ("refactor", "changes the code without changing behavior"),
+    ("revert", "reverts prior changes"),
+];
+
+lazy_static! {
+    static ref GIT: std::process::Command = std::process::Command::new("git");
+}
+
+pub struct DefaultConfig;
+impl DefaultConfig {
+    pub fn new() -> Self {
+        DefaultConfig
+    }
+}
+
+impl LintConfig for DefaultConfig {}
+impl Config for DefaultConfig {
+    fn source(&self) -> &str {
+        "<default>"
     }
 }
