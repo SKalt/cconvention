@@ -9,7 +9,7 @@ use subject::Subject;
 
 use crate::LANGUAGE;
 
-use self::lints::LintConfig;
+use self::lints::{check_body_leading_blank, LintConfig, BODY_LEADING_BLANK};
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
@@ -20,10 +20,6 @@ lazy_static! {
         tree_sitter::Query::new(LANGUAGE.clone(), "(trailer) @trailer",).unwrap();
     static ref FILE_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(filepath) @text.uri",).unwrap();
-    static ref BAD_TRAILER_QUERY: tree_sitter::Query = tree_sitter::Query::new(
-        LANGUAGE.clone(),
-        "(trailer (token) @token (value)? @value)",
-    ).unwrap();
 
     // static ref MISSING_BODY_QUERY: tree_sitter::Query = tree_sitter::Query::new(
     //     LANGUAGE.clone(),
@@ -263,55 +259,13 @@ impl GitCommitDocument {
 
 /// linting
 impl GitCommitDocument {
-    pub(crate) fn get_diagnostics(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn get_mandatory_lints(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
-            lints.extend(subject.get_diagnostics(config));
-            let mut body_lines = self.get_body();
-            if let Some((padding_line_number, next_line)) = body_lines.next() {
-                if next_line.chars().next().is_some() {
-                    lints.push(config.make_line_lint(
-                        "body-leading-blank",
-                        "there should be a blank line between the subject and the body".into(),
-                        padding_line_number,
-                        0,
-                        0,
-                    ));
-                } else {
-                    // the first body line is blank
-                    // check for multiple blank lines before the body
-                    let mut n_blank_lines = 1u8;
-                    for (line_number, line) in body_lines {
-                        if line.chars().next().is_some() && line.chars().any(|c| !c.is_whitespace())
-                        {
-                            if n_blank_lines > 1 {
-                                lints.push(config.make_lint(
-                                    "body-leading-blank", // TODO: make distinct code? Parametrize?
-                                    format!("{n_blank_lines} blank lines between subject and body"),
-                                    padding_line_number,
-                                    0,
-                                    line_number,
-                                    // since lsp_types::Position line numbers are 1-indexed
-                                    // and enumeration line numbers are 0-indexed, `first_body_line_number`
-                                    // is the line number of the preceding blank line
-                                    0,
-                                ));
-                            }
-                            break;
-                        } else {
-                            n_blank_lines += 1
-                        }
-                    }
-                    // ignore multiple trailing newlines without a body
-                };
-            };
+            lints.extend(subject.get_diagnostics());
         };
 
-        {
-            // validation of message body
-            lints.extend(self.check_trailers(config))
-            // TODO: check trailers are (1) grouped (2) at the end of the document (3) have a blank line before them
-        }
+        lints.extend(self.check_trailers());
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
         // "signed-off-by:", etc.
         lints
@@ -346,72 +300,20 @@ impl GitCommitDocument {
         None
     }
 
-    fn check_trailers(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    fn check_trailers(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
-        let trailer_lines = self.get_trailers_lines();
-        if trailer_lines.is_empty() {
+        if self.get_trailers_lines().is_empty() {
             return lints; // no trailers => no lints
         }
-        if let Some(missing_padding_line) = self.check_missing_trailer_padding_line(config) {
-            lints.push(missing_padding_line);
-        }
-        lints.extend(self.check_trailer_values(config));
-        lints.extend(self.check_trailer_arrangement(config));
-        // TODO: check for common trailer misspellings
+        lints.extend(lints::check_trailer_values(self));
+        lints.extend(self.check_trailer_arrangement());
         lints
     }
-
-    fn check_missing_trailer_padding_line(
-        &self,
-        config: &dyn LintConfig,
-    ) -> Option<lsp_types::Diagnostic> {
-        if let Some(missing_line) = self.get_missing_trailer_padding_line() {
-            Some(config.make_line_lint(
-                "footer-leading-blank",
-                "missing blank line before trailers".into(),
-                missing_line,
-                0,
-                0,
-            ))
-        } else {
-            None
-        }
-    }
-
-    fn check_trailer_values(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
-        let mut lints = vec![];
-        let mut cursor = tree_sitter::QueryCursor::new();
-        let code = self.code.to_string();
-        let trailers = cursor.matches(
-            &BAD_TRAILER_QUERY,
-            self.syntax_tree.root_node(),
-            code.as_bytes(),
-        );
-        for trailer_match in trailers {
-            debug_assert!(trailer_match.captures.len() == 2);
-            let value = trailer_match.captures[1].node;
-            let value_text = value.utf8_text(&code.as_bytes()).unwrap().trim();
-            if value_text.is_empty() {
-                let key = trailer_match.captures[0].node;
-                let key_text = key.utf8_text(code.as_bytes()).unwrap();
-                let start = value.start_position();
-                let end = value.end_position();
-                lints.push(config.make_lint(
-                    "footer-empty",
-                    format!("Empty value for trailer {:?}", key_text),
-                    start.row,
-                    start.column as u32,
-                    end.row,
-                    end.column as u32,
-                ));
-            }
-        }
-        lints
-    }
-    fn check_trailer_arrangement(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    fn check_trailer_arrangement(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let _trailer_lines = self.get_trailers_lines();
         let mut trailer_lines = _trailer_lines.iter().peekable();
+        // let mut trailer_lines = _trailer_lines.iter();
         let mut body_lines = self.get_body();
         while let Some(trailer_line_number) = trailer_lines.next() {
             while let Some((body_line_number, line)) = body_lines.next() {
@@ -426,8 +328,9 @@ impl GitCommitDocument {
                         continue; // ignore empty lines
                     }
                     log_debug!("found body line after trailer: {}", body_line_number);
-                    let diagnostic = config.make_line_lint(
-                        "INVALID",
+                    let diagnostic = lints::make_line_diagnostic(
+                        lints::INVALID,
+                        lsp_types::DiagnosticSeverity::ERROR,
                         "Message body after trailer.".into(),
                         body_line_number,
                         0,

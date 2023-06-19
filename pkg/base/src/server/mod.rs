@@ -177,7 +177,7 @@ impl<C: Config> Server<C> {
             GitCommitDocument::new(params.text_document.text),
         );
         let commit = self.commits.get(&uri).unwrap();
-        self.publish_diagnostics(uri, commit.get_diagnostics(&self.config));
+        self.publish_diagnostics(uri, self.config.lint(commit));
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -209,12 +209,10 @@ impl<C: Config> Server<C> {
             }
             let commit = commit.unwrap();
             commit.edit(&params.content_changes);
-            commit.get_diagnostics(&self.config)
+            self.config.lint(commit)
         };
         self.publish_diagnostics(uri, diagnostics);
         return Ok(ServerLoopAction::Continue);
-
-        // self.connection.sender.
     }
     fn handle_save(
         &mut self,
@@ -225,7 +223,8 @@ impl<C: Config> Server<C> {
             let uri = params.text_document.uri;
             log_debug!("refreshing syntax tree");
             let commit = GitCommitDocument::new(text);
-            self.publish_diagnostics(uri, commit.get_diagnostics(&self.config));
+            self.publish_diagnostics(uri.clone(), self.config.lint(&commit));
+            self.commits.insert(uri, commit);
         }
         Ok(ServerLoopAction::Continue)
     }

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Write};
 
-use super::lints::LintConfig;
+use super::lints::{self, make_line_diagnostic, LintConfig};
 
 /// byte-offsets of ranges in a conventional commit header.
 #[derive(Debug, Default, Clone)]
@@ -211,7 +211,7 @@ impl PrefixLengths {
 }
 
 #[test]
-fn test_subject_stuff() {
+fn test_subject_lexing() {
     let test_cases: Vec<((usize, &str), &str)> = {
         let test_cases = include_str!("./subject_test_cases.txt");
         test_cases
@@ -303,104 +303,88 @@ impl Subject {
         ranges
     }
 }
-// diagnostics
+
+// diagnostics -- all of these are non-configurable parse errors
 impl Subject {
-    fn make_diagnostic(
-        &self,
-        start: u32,
-        end: u32,
-        code: &str,
-        config: &dyn LintConfig,
-        message: String,
-    ) -> lsp_types::Diagnostic {
-        config.make_line_lint(code, message, self.line_number.into(), start, end)
-    }
-
-    fn check_line_length(&self, config: &dyn LintConfig) -> Option<lsp_types::Diagnostic> {
-        let n_chars = self.line.chars().count();
-        let cutoff = config.max_subject_line_length();
-        if n_chars > cutoff as usize && cutoff > 0 {
-            Some(self.make_diagnostic(
-                cutoff as u32,
-                n_chars.try_into().unwrap(),
-                "header-length",
-                config,
-                format!("Header line is longer than {} characters.", cutoff),
-            ))
-        } else {
-            None
-        }
-    }
-
-    fn check_space_in_type(&self, config: &dyn LintConfig) -> Option<lsp_types::Diagnostic> {
-        let type_text = self.type_text();
+    fn check_space_in_type(&self) -> Option<lsp_types::Diagnostic> {
+        // let mut lints = vec![];
+        let type_text: &str = self.type_text();
         if type_text.chars().any(|c| c.is_whitespace()) {
-            Some(self.make_diagnostic(
+            Some(make_line_diagnostic(
+                lints::INVALID,
+                lsp_types::DiagnosticSeverity::ERROR,
+                "Type contains whitespace.".into(),
+                self.line_number as usize,
                 0,
-                type_text.chars().count().try_into().unwrap(),
-                "INVALID",
-                config,
-                format!("type contains whitespace"),
+                type_text.chars().count() as u32,
             ))
         } else {
             None
         }
     }
 
-    fn check_scope(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    fn check_scope(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let scope_text = self.scope_text();
+        if scope_text.len() == 0 {
+            return lints;
+        }
         let start = self.type_text().chars().count();
         let end = scope_text.chars().count() + start;
         if let Some(open) = scope_text.chars().next() {
             if open != '(' {
-                lints.push(self.make_diagnostic(
+                lints.push(make_line_diagnostic(
+                    lints::INVALID,
+                    lsp_types::DiagnosticSeverity::ERROR,
+                    "Scope should start with '('.".into(),
+                    self.line_number as usize,
                     start.try_into().unwrap(),
                     (start + 1).try_into().unwrap(),
-                    "INVALID",
-                    config,
-                    format!("scope should start with '('"),
                 ));
             }
         }
         if let Some(close) = scope_text.chars().last() {
             if close != ')' {
-                lints.push(self.make_diagnostic(
+                lints.push(make_line_diagnostic(
+                    lints::INVALID,
+                    lsp_types::DiagnosticSeverity::ERROR,
+                    "Scope should end with ')'".into(),
+                    self.line_number as usize,
                     (end - 1).try_into().unwrap(),
                     end.try_into().unwrap(),
-                    "INVALID",
-                    config,
-                    format!("scope should end with ')'"),
+                    // config,
                 ));
             }
         }
         if !scope_text
             .chars()
             .any(|c| !c.is_whitespace() && c != '(' && c != ')')
-            && scope_text.len() > 0
         {
-            lints.push(self.make_diagnostic(
+            lints.push(make_line_diagnostic(
+                lints::INVALID,
+                lsp_types::DiagnosticSeverity::ERROR,
+                "Missing scope text".into(),
+                self.line_number as usize,
                 start.try_into().unwrap(),
                 end.try_into().unwrap(),
-                "scope-empty",
-                config,
-                format!("empty scope"),
+                // config,
             ));
         }
         if scope_text.chars().any(|c| c.is_whitespace()) {
-            lints.push(self.make_diagnostic(
+            lints.push(make_line_diagnostic(
+                lints::INVALID,
+                lsp_types::DiagnosticSeverity::ERROR,
+                "Scope contains whitespace".into(),
+                self.line_number as usize,
                 start.try_into().unwrap(),
                 end.try_into().unwrap(),
-                "INVALID",
-                config,
-                format!("scope contains whitespace"),
+                // config,
             ));
         }
         lints
     }
 
-    fn check_rest(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
-        let mut lints = vec![];
+    fn check_rest_illegal_chars(&self) -> Option<lsp_types::Diagnostic> {
         let rest_text = self.rest_text();
         let start = self.type_text().chars().count() + self.scope_text().chars().count();
         let end = start + rest_text.chars().count();
@@ -414,83 +398,49 @@ impl Subject {
             sorted.iter().collect()
         };
         if illegal_chars.len() > 0 {
-            lints.push(self.make_diagnostic(
-                start.try_into().unwrap(),
-                end.try_into().unwrap(),
-                "INVALID",
-                config,
+            Some(lints::make_line_diagnostic(
+                lints::INVALID,
+                lsp_types::DiagnosticSeverity::ERROR,
                 format!("illegal characters after type/scope: {:?}", illegal_chars),
-            ));
-        }
-        let missing_colon = if let Some(last) = rest_text.chars().last() {
-            last != ':'
+                self.line_number as usize,
+                start as u32,
+                end as u32,
+            ))
         } else {
-            true
-        };
-        if missing_colon {
-            lints.push(self.make_diagnostic(
-                end.try_into().unwrap(),
-                end.try_into().unwrap(),
-                "INVALID",
-                config,
-                format!("Missing colon"),
-            ));
+            None
         }
-        lints
+    }
+    fn check_rest_missing_colon(&self) -> Option<lsp_types::Diagnostic> {
+        let rest_text = self.rest_text();
+        let start = self.type_text().chars().count() + self.scope_text().chars().count();
+        let end = start + rest_text.chars().count();
+
+        if rest_text.chars().last().map(|c| c != ':').unwrap_or(true) {
+            Some(make_line_diagnostic(
+                lints::INVALID,
+                lsp_types::DiagnosticSeverity::ERROR,
+                "Missing colon.".into(),
+                self.line_number as usize,
+                end as u32,
+                end as u32,
+            ))
+        } else {
+            None
+        }
     }
 
-    fn check_message(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    fn check_rest(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
-        let message = self.message_text();
-        let missing_space = if let Some(first) = message.chars().next() {
-            first != ' '
-        } else {
-            true
-        };
-        let start = self.prefix_text().chars().count();
-        if missing_space {
-            lints.push(self.make_diagnostic(
-                start.try_into().unwrap(),
-                (start + 1).try_into().unwrap(),
-                "INVALID", // TODO: differentiate code?
-                config,
-                format!("message should start with a space"),
-            ));
-        }
-        if message.len() == 0 || message.chars().all(|c| c.is_whitespace()) {
-            lints.push(self.make_diagnostic(
-                start.try_into().unwrap(),
-                (start + message.chars().count()).try_into().unwrap(),
-                "subject-empty",
-                config,
-                format!("empty subject message"),
-            ));
-        }
-        let n_leading_space_chars = message.chars().take_while(|c| c.is_whitespace()).count();
-        if n_leading_space_chars > 1 {
-            lints.push(self.make_diagnostic(
-                start.try_into().unwrap(),
-                (start + n_leading_space_chars).try_into().unwrap(),
-                "INVALID",
-                config,
-                format!("excess leading whitespace in subject message"),
-            ));
-        }
+        lints.extend(self.check_rest_illegal_chars());
+        lints.extend(self.check_rest_missing_colon());
         lints
     }
 
-    pub(crate) fn get_diagnostics(&self, config: &dyn LintConfig) -> Vec<lsp_types::Diagnostic> {
+    pub(crate) fn get_diagnostics(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = Vec::new();
-
-        if let Some(lint) = self.check_line_length(config) {
-            lints.push(lint);
-        }
-        if let Some(lint) = self.check_space_in_type(config) {
-            lints.push(lint);
-        }
-        lints.extend(self.check_scope(config));
-        lints.extend(self.check_rest(config));
-        lints.extend(self.check_message(config));
+        lints.extend(self.check_space_in_type());
+        lints.extend(self.check_scope());
+        lints.extend(self.check_rest());
         lints
     }
 
