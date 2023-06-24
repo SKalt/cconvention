@@ -68,10 +68,8 @@ pub trait Config: LintConfig {
                 .arg("log")
                 .arg("--format=%s")
                 .arg("--max-count=1000")
-                .arg("--");
-            for file in staged_files {
-                cmd.arg(file);
-            }
+                .arg("--")
+                .args(staged_files);
 
             let output = cmd
                 .output()
@@ -128,6 +126,7 @@ pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::Comple
     }
     result
 }
+
 const DEFAULT_TYPES: &[(&str, &str)] = &[
     ("feat", "adds a new feature"),
     ("fix", "fixes a bug"),
@@ -144,10 +143,6 @@ const DEFAULT_TYPES: &[(&str, &str)] = &[
     ("refactor", "changes the code without changing behavior"),
     ("revert", "reverts prior changes"),
 ];
-
-lazy_static! {
-    static ref GIT: std::process::Command = std::process::Command::new("git");
-}
 
 pub struct DefaultConfig;
 impl DefaultConfig {

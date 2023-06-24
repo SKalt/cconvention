@@ -11,7 +11,6 @@ pub const INVALID: &str = "INVALID";
 pub const BODY_LEADING_BLANK: &str = "body-leading-blank";
 pub const FOOTER_LEADING_BLANK: &str = "footer-leading-blank";
 pub const HEADER_MAX_LENGTH: &str = "header-max-length";
-pub const FOOTER_EMPTY: &str = "footer-empty";
 pub const SCOPE_EMPTY: &str = "scope-empty";
 pub const SUBJECT_EMPTY: &str = "subject-empty";
 pub const SUBJECT_LEADING_SPACE: &str = "subject-leading-space";
@@ -57,16 +56,6 @@ lazy_static! {
 /// a lint-fn is a test that can return zero to many logically equivalent diagnostics
 /// differentiated by a message: e.g. `[line-too-long, line-too-short]`
 type LintFn<'cfg> = dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'cfg;
-
-/// logs that the test for the provided code is missing
-fn missing_lint(
-    _doc: &GitCommitDocument,
-    code: &str,
-    _severity: &lsp_types::DiagnosticSeverity,
-) -> Vec<lsp_types::Diagnostic> {
-    log_debug!("Missing lint '{code}'");
-    vec![]
-}
 
 /// check there is exactly 1 line between the header and body
 pub fn check_body_leading_blank(
@@ -160,6 +149,7 @@ fn check_footer_leading_blank(
     lints
 }
 
+/// transform a lint-test that accepts a code and severity into a function that only accepts a document.
 fn transmogrify<'a, F>(
     f: F,
     code: &'a str,
@@ -277,7 +267,10 @@ fn check_subject_empty(
 }
 
 // TODO: curry LintFn s.t. (code)(severity)(doc) -> lint?
-fn construct_default_lint_tests_map(cfg: &dyn LintConfig) -> HashMap<&str, Box<LintFn>> {
+// FIXME: don't construct the test-map on every lint
+fn construct_default_lint_tests_map<'cfg>(
+    cfg: &'cfg dyn LintConfig,
+) -> HashMap<&str, Box<LintFn<'cfg>>> {
     // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Box`ed fns
     let mut h: HashMap<&str, Box<LintFn>> = HashMap::with_capacity(2);
     macro_rules! insert {
@@ -309,13 +302,9 @@ fn construct_default_lint_tests_map(cfg: &dyn LintConfig) -> HashMap<&str, Box<L
     insert!(BODY_LEADING_BLANK, check_body_leading_blank);
     insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
     // TODO: check there's exactly `n` leading blank lines before trailers?
-    // insert!(FOOTER_EMPTY, check_trailer_values);
     insert!(SCOPE_EMPTY, check_scope_present);
     insert!(SUBJECT_EMPTY, check_subject_empty);
     insert!(SUBJECT_LEADING_SPACE, check_subject_leading_space);
-    // insert!();
-    // insert!();
-    // insert!();
     h
 }
 

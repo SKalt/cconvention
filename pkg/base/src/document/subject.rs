@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Write};
 
-use super::lints::{self, make_line_diagnostic, LintConfig};
+use super::lints::{self, make_line_diagnostic};
 
 /// byte-offsets of ranges in a conventional commit header.
 #[derive(Debug, Default, Clone)]

@@ -9,8 +9,6 @@ use subject::Subject;
 
 use crate::LANGUAGE;
 
-use self::lints::{check_body_leading_blank, LintConfig, BODY_LEADING_BLANK};
-
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
         tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
@@ -27,13 +25,6 @@ lazy_static! {
     // ).unwrap();
 }
 
-pub struct GitCommitDocument {
-    pub code: crop::Rope,
-    parser: tree_sitter::Parser, // since the parser is stateful, it needs to be owned by the document
-    pub syntax_tree: tree_sitter::Tree,
-    pub subject: Option<Subject>,
-}
-
 fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
     for (number, line) in code.lines().enumerate() {
         if line.bytes().next() != Some(b'#') {
@@ -41,6 +32,13 @@ fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
         }
     }
     None
+}
+
+pub struct GitCommitDocument {
+    pub code: crop::Rope,
+    parser: tree_sitter::Parser, // since the parser is stateful, it needs to be owned by the document
+    pub syntax_tree: tree_sitter::Tree,
+    pub subject: Option<Subject>,
 }
 
 /// state management for a git commit document
@@ -255,8 +253,6 @@ impl GitCommitDocument {
     }
 }
 
-// TODO: extract all lints into standalone functions?
-
 /// linting
 impl GitCommitDocument {
     pub(crate) fn get_mandatory_lints(&self) -> Vec<lsp_types::Diagnostic> {
@@ -264,7 +260,6 @@ impl GitCommitDocument {
         if let Some(subject) = &self.subject {
             lints.extend(subject.get_diagnostics());
         };
-
         lints.extend(self.check_trailers());
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
         // "signed-off-by:", etc.

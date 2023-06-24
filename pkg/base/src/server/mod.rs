@@ -10,10 +10,106 @@ use lsp_types::{DidChangeTextDocumentParams, ServerCapabilities};
 use std::collections::HashMap;
 use std::error::Error;
 
+lazy_static! {
+    pub static ref CAPABILITIES: lsp_types::ServerCapabilities = {
+        lsp_types::ServerCapabilities {
+            position_encoding: None, //Some(lsp_types::PositionEncodingKind::UTF8),
+            text_document_sync: Some(lsp_types::TextDocumentSyncCapability::Options(
+                lsp_types::TextDocumentSyncOptions {
+                    open_close: Some(true), // open, close notifications sent to server
+                    change: Some(lsp_types::TextDocumentSyncKind::INCREMENTAL),
+                    will_save: None,
+                    will_save_wait_until: None,
+                    save: Some(lsp_types::TextDocumentSyncSaveOptions::SaveOptions(
+                        lsp_types::SaveOptions {
+                            include_text: Some(true),
+                        },
+                    )),
+                },
+            )),
+            hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
+            // FIXME: provide hover info about types, scopes
+            // hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
+            // TODO: provide selection range
+            // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
+            completion_provider: Some(lsp_types::CompletionOptions {
+                resolve_provider: None,
+                trigger_characters: None,
+                all_commit_characters: None,
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: None,
+                },
+                completion_item: None,
+            }),
+            // TODO: provide code actions?
+            // code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
+            //     lsp_types::CodeActionOptions {
+            //         code_action_kinds: Some(vec![
+            //             CodeActionKind::EMPTY,
+            //             CodeActionKind::QUICKFIX,
+            //             CodeActionKind::REFACTOR,
+            //             CodeActionKind::SOURCE_FIX_ALL,
+            //         ]),
+            //         work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+            //             work_done_progress: None,
+            //         },
+            //         resolve_provider: None,
+            //     },
+            // )),
+            // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_formatting
+            document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
+            // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_rangeFormatting
+            document_range_formatting_provider: None,
+            // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_onTypeFormatting
+            document_on_type_formatting_provider: Some(lsp_types::DocumentOnTypeFormattingOptions {
+                first_trigger_character: "(".to_string(),
+                more_trigger_character: None,
+            }),
+
+            document_link_provider: Some(lsp_types::DocumentLinkOptions {
+                resolve_provider: Some(true),
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: None,
+                },
+            }),
+            folding_range_provider: None, // TODO: actually do this though
+            // TODO: jump from type/scope -> definition in config
+            // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
+            // definition_provider: None,
+            declaration_provider: None, // maybe later, for jumping to configuration
+            execute_command_provider: None, // maybe later for executing code blocks
+            workspace: None,            // maybe later, for git history inspection
+            semantic_tokens_provider: Some(
+                // provides syntax highlighting!
+                lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
+                    lsp_types::SemanticTokensOptions {
+                        work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                            work_done_progress: None,
+                        },
+                        legend: lsp_types::SemanticTokensLegend {
+                            token_types: syntax_token_scopes::SYNTAX_TOKEN_LEGEND
+                                .iter()
+                                .map(|tag| lsp_types::SemanticTokenType::new(*tag))
+                                .collect(),
+                            token_modifiers: vec![
+                            // lsp_types::SemanticTokenModifier
+                            ],
+                        },
+                        range: None, // TODO: injection ranges
+                        full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
+                    },
+                ),
+            ),
+            // useless implementation commented :/
+            // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
+            ..Default::default()
+        }
+    };
+}
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
-pub struct Server<C: Config> {
-    config: C,
+pub struct Server<Cfg: Config> {
+    config: Cfg,
     commits: HashMap<lsp_types::Url, GitCommitDocument>,
     connection: lsp_server::Connection,
 }
@@ -55,7 +151,7 @@ where
 }
 
 // basic methods
-impl<C: Config> Server<C> {
+impl<Cfg: Config> Server<Cfg> {
     /// communicate the server's capabilities with the client
     pub fn init(
         &mut self,
@@ -78,7 +174,7 @@ impl<C: Config> Server<C> {
     }
 
     /// create a fresh server with a stdio-based connection.
-    pub fn from_stdio(config: C) -> Self {
+    pub fn from_stdio(config: Cfg) -> Self {
         let (conn, _io) = lsp_server::Connection::stdio();
         Server {
             config,
@@ -126,7 +222,7 @@ impl<C: Config> Server<C> {
 }
 
 // notification handlers
-impl<C: Config> Server<C> {
+impl<Cfg: Config> Server<Cfg> {
     fn handle_notification(
         &mut self,
         notification: lsp_server::Notification,
@@ -235,7 +331,7 @@ impl<C: Config> Server<C> {
 }
 
 // request handlers for specific methods
-impl<C: Config> Server<C> {
+impl<Cfg: Config> Server<Cfg> {
     fn handle_request(
         &mut self,
         request: lsp_server::Request,
