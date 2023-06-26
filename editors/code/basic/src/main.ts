@@ -9,7 +9,7 @@ import {
 
 const DEFAULT_SERVER = "conventional-commit-language-server";
 let client: LanguageClient; // FIXME: avoid global variable
-// FIXME: potentially resolve the bundled binary
+// FIXME: check for server on $PATH, then resolve bundled server
 function getServer(context: ExtensionContext): string {
   return Uri.joinPath(context.extensionUri, "dist", DEFAULT_SERVER).fsPath;
 }

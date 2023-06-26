@@ -1,7 +1,10 @@
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::document::lints::LintConfig;
+use crate::document::{
+    lints::{construct_default_lint_tests_map, LintConfig, LintFn},
+    GitCommitDocument,
+};
 
 lazy_static! {
     static ref RE: Regex =
@@ -143,15 +146,26 @@ const DEFAULT_TYPES: &[(&str, &str)] = &[
     ("refactor", "changes the code without changing behavior"),
     ("revert", "reverts prior changes"),
 ];
-
-pub struct DefaultConfig;
+// TODO: disabling tracing, error reporting
+pub struct DefaultConfig {
+    tests: HashMap<
+        &'static str,
+        Box<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
+    >,
+}
 impl DefaultConfig {
     pub fn new() -> Self {
-        DefaultConfig
+        DefaultConfig {
+            tests: construct_default_lint_tests_map(50),
+        }
     }
 }
 
-impl LintConfig for DefaultConfig {}
+impl LintConfig for DefaultConfig {
+    fn get_test(&self, code: &str) -> Option<&Box<LintFn>> {
+        self.tests.get(code)
+    }
+}
 impl Config for DefaultConfig {
     fn source(&self) -> &str {
         "<default>"

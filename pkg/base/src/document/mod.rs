@@ -7,7 +7,7 @@ use crop::{Rope, RopeSlice};
 use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
 
-use crate::LANGUAGE;
+use crate::{document::lints::INVALID, LANGUAGE};
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
@@ -323,14 +323,14 @@ impl GitCommitDocument {
                         continue; // ignore empty lines
                     }
                     log_debug!("found body line after trailer: {}", body_line_number);
-                    let diagnostic = lints::make_line_diagnostic(
-                        lints::INVALID,
-                        lsp_types::DiagnosticSeverity::ERROR,
+                    let mut diagnostic = lints::make_line_diagnostic(
                         "Message body after trailer.".into(),
                         body_line_number,
                         0,
                         n_chars,
                     );
+                    diagnostic.code = Some(lsp_types::NumberOrString::String(INVALID.into()));
+                    diagnostic.severity = Some(lsp_types::DiagnosticSeverity::ERROR.into());
                     lints.push(diagnostic);
                 }
             }

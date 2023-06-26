@@ -16,23 +16,34 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
                 .with_ansi(atty::is(Stream::Stderr)),
         );
         #[cfg(feature = "telemetry")]
-        let reg = reg.with(sentry::integrations::tracing::layer());
+        if std::env::var("GIT_CC_DISABLE_TRACING").is_err() {
+            // TODO: decide on consistent env var prefix
+            reg.with(sentry::integrations::tracing::layer()).init();
+        } else {
+            reg.init();
+        };
+        #[cfg(not(feature = "telemetry"))]
         reg.init();
     }
     #[cfg(feature = "telemetry")]
-    let _guard = sentry::init((
-        SENTRY_DSN,
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            auto_session_tracking: true,
-            traces_sample_rate: 1.0,
-            enable_profiling: true,
-            profiles_sample_rate: 1.0,
-            debug: true,
-            ..Default::default()
-        },
-    ));
-    base::server::Server::from_stdio(base::config::DefaultConfig)
+    let _guard = if std::env::var("GIT_CC_DISABLE_ERROR_REPORTING").is_err() {
+        Some(sentry::init((
+            SENTRY_DSN,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                auto_session_tracking: true,
+                traces_sample_rate: 1.0, // TODO: reduce sampling rate
+                enable_profiling: true,
+                profiles_sample_rate: 1.0, // TODO: reduce sampling rate
+                debug: true,
+                ..Default::default()
+            },
+        )))
+    } else {
+        None
+    };
+    let cfg = base::config::DefaultConfig::new();
+    base::server::Server::from_stdio(cfg)
         .init(&base::server::CAPABILITIES)?
         .serve()?;
     log_info!("done");
