@@ -67,7 +67,7 @@ impl PrefixLengths {
                         continue;
                     }
                     ':' => State::Done,
-                    ' ' | '\t' | _ => state, // keep scanning for the end of the type
+                    _ => state, // keep scanning for the end of the type
                 },
                 State::Scope => match c {
                     ')' => State::ScopeDone,
@@ -317,7 +317,7 @@ impl Subject {
                 type_text.chars().count() as u32,
             );
             lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
-            lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR.into());
+            lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             Some(lint)
         } else {
             None
@@ -327,7 +327,7 @@ impl Subject {
     fn check_scope(&self) -> Vec<lsp_types::Diagnostic> {
         let mut lints = vec![];
         let scope_text = self.scope_text();
-        if scope_text.len() == 0 {
+        if scope_text.is_empty() {
             return lints;
         }
         let start = self.type_text().chars().count();
@@ -400,11 +400,11 @@ impl Subject {
                 .chars()
                 .filter(|c| *c != '!' && *c != ':')
                 .collect();
-            let mut sorted: Vec<char> = unique.iter().map(|c| *c).collect();
+            let mut sorted: Vec<char> = unique.iter().copied().collect();
             sorted.sort();
             sorted.iter().collect()
         };
-        if illegal_chars.len() > 0 {
+        if !illegal_chars.is_empty() {
             let mut lint = lints::make_line_diagnostic(
                 format!("illegal characters after type/scope: {:?}", illegal_chars),
                 self.line_number as usize,
@@ -462,7 +462,7 @@ impl Subject {
             }
         }
         let scope_text = self.scope_text();
-        if scope_text.len() > 0 {
+        if !scope_text.is_empty() {
             for c in scope_text.chars() {
                 if !c.is_whitespace() && !":!".contains(c) {
                     formatted.write_char(c).unwrap();

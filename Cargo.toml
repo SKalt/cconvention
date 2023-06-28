@@ -1,4 +1,8 @@
-workspace.members = [
+[workspace]
+members = [
   "pkg/base",
   "pkg/pro",
 ]
+
+[profile.release]
+lto = true

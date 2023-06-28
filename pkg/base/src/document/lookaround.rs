@@ -23,7 +23,7 @@ pub fn find_byte_offset(text: &Rope, pos: lsp_types::Position) -> usize {
             }
         }
     }
-    return byte_offset;
+    byte_offset
 }
 
 /// transform a line/column position into a tree-sitter Point struct

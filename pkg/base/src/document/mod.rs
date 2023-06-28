@@ -11,13 +11,13 @@ use crate::{document::lints::INVALID, LANGUAGE};
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(LANGUAGE.clone(), "(subject) @subject",).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, "(subject) @subject",).unwrap();
     // static ref BODY_QUERY: tree_sitter::Query =
     //     tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
     static ref TRAILER_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(LANGUAGE.clone(), "(trailer) @trailer",).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, "(trailer) @trailer",).unwrap();
     static ref FILE_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(LANGUAGE.clone(), "(filepath) @text.uri",).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, "(filepath) @text.uri",).unwrap();
 
     // static ref MISSING_BODY_QUERY: tree_sitter::Query = tree_sitter::Query::new(
     //     LANGUAGE.clone(),
@@ -68,9 +68,9 @@ impl GitCommitDocument {
     fn update_subject(&mut self) {
         self.subject =
             if let Some((subject_line, line_number)) = self.get_subject_line_with_number() {
-                let subject = Subject::new(subject_line.to_string(), line_number);
+                let subject = Subject::new(subject_line, line_number);
                 log_debug!("new subject:");
-                log_debug!("\t{}", subject_line);
+                log_debug!("\t{}", subject.line);
                 log_debug!("\t{}", subject.debug_ranges());
 
                 Some(subject)
@@ -284,10 +284,8 @@ impl GitCommitDocument {
             let mut body_lines = _body_lines.peekable();
             while let Some((n, line)) = body_lines.next() {
                 if let Some((next_line, _)) = body_lines.peek() {
-                    if *(next_line) == (*first_trailer_line) as usize {
-                        if line.chars().next().is_some() {
-                            return Some(n);
-                        }
+                    if *next_line == (*first_trailer_line) as usize && !line.is_empty() {
+                        return Some(n);
                     }
                 }
             }
@@ -311,7 +309,7 @@ impl GitCommitDocument {
         // let mut trailer_lines = _trailer_lines.iter();
         let mut body_lines = self.get_body();
         while let Some(trailer_line_number) = trailer_lines.next() {
-            while let Some((body_line_number, line)) = body_lines.next() {
+            for (body_line_number, line) in body_lines.by_ref() {
                 if body_line_number as u32 <= *trailer_line_number {
                     continue;
                 } else if Some(&&(body_line_number as u32)) == trailer_lines.peek() {
@@ -330,7 +328,7 @@ impl GitCommitDocument {
                         n_chars,
                     );
                     diagnostic.code = Some(lsp_types::NumberOrString::String(INVALID.into()));
-                    diagnostic.severity = Some(lsp_types::DiagnosticSeverity::ERROR.into());
+                    diagnostic.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
                     lints.push(diagnostic);
                 }
             }

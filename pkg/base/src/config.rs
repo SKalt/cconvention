@@ -109,8 +109,6 @@ pub trait Config: LintConfig {
                 })
                 .collect()
         };
-        // log_debug!("applicable scopes: {:?}", applicable_scopes);
-
         let mut result = Vec::with_capacity(applicable_scopes.len());
 
         for (label, detail) in applicable_scopes {

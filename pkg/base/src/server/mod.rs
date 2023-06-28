@@ -89,7 +89,7 @@ lazy_static! {
                         legend: lsp_types::SemanticTokensLegend {
                             token_types: syntax_token_scopes::SYNTAX_TOKEN_LEGEND
                                 .iter()
-                                .map(|tag| lsp_types::SemanticTokenType::new(*tag))
+                                .map(|tag| lsp_types::SemanticTokenType::new(tag))
                                 .collect(),
                             token_modifiers: vec![
                             // lsp_types::SemanticTokenModifier
@@ -286,7 +286,7 @@ impl<Cfg: Config> Server<Cfg> {
         self.publish_diagnostics(uri, vec![]);
         // TODO: shut down the server if 0 documents are open. Unfortunately,
         // the client has to tell the server to exit.
-        if self.commits.len() == 0 {
+        if self.commits.is_empty() {
             Ok(ServerLoopAction::Break)
         } else {
             Ok(ServerLoopAction::Continue)
@@ -437,7 +437,7 @@ impl<Cfg: Config> Server<Cfg> {
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
                     }
-                } else if character_index <= rest_len + scope_len + type_len as usize {
+                } else if character_index <= rest_len + scope_len + type_len {
                     // TODO: suggest either a bang or a colon
                 } else {
                     // in the subject message; no completions
@@ -487,8 +487,8 @@ impl<Cfg: Config> Server<Cfg> {
                         }
                         if character_index >= 1
                             && character_index < "Signed-off-by".len()
-                            && &line.as_str()[..character_index]
-                                == &"Signed-off-by"[0..character_index]
+                            && line.as_str()[..character_index]
+                                == "Signed-off-by"[0..character_index]
                         {
                             result.push(lsp_types::CompletionItem {
                                 label: "Signed-off-by:".to_owned(),
@@ -601,7 +601,7 @@ impl<Cfg: Config> Server<Cfg> {
         let commit = commit.unwrap();
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
-            data: syntax_token_scopes::handle_all_tokens(&commit, params)?,
+            data: syntax_token_scopes::handle_all_tokens(commit, params)?,
         });
         let result: Response = Response {
             id: id.clone(),
@@ -758,10 +758,10 @@ impl<Cfg: Config> Server<Cfg> {
         }
         let commit = commit.unwrap();
         let result: Vec<lsp_types::TextEdit> = commit.format();
-        return Ok(Response {
+        Ok(Response {
             id: id.clone(),
             result: Some(serde_json::to_value(result).unwrap()),
             error: None,
-        });
+        })
     }
 }

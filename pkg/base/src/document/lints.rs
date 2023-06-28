@@ -43,7 +43,7 @@ lazy_static! {
     };
 
     static ref BAD_TRAILER_QUERY: tree_sitter::Query = tree_sitter::Query::new(
-        LANGUAGE.clone(),
+        *LANGUAGE,
         "(trailer (token) @token (value)? @value)",
     ).unwrap();
 
@@ -161,7 +161,7 @@ pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Di
     for trailer_match in trailers {
         debug_assert!(trailer_match.captures.len() == 2);
         let value = trailer_match.captures[1].node;
-        let value_text = value.utf8_text(&text.as_bytes()).unwrap().trim();
+        let value_text = value.utf8_text(text.as_bytes()).unwrap().trim();
         if value_text.is_empty() {
             let key = trailer_match.captures[0].node;
             let key_text = key.utf8_text(text.as_bytes()).unwrap();
@@ -185,7 +185,9 @@ pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Di
 fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     if let Some(subject) = &doc.subject {
-        if subject.scope_text().len() == 0 {
+        let len = subject.scope_text().len();
+        if len > 0 && len <= 2 {
+            // 2 = just the open/close parens
             let type_end = subject.type_text().chars().count();
             let mut lint = make_line_diagnostic(
                 "Missing scope".into(),
@@ -205,7 +207,7 @@ fn check_subject_leading_space(doc: &GitCommitDocument, code: &str) -> Vec<lsp_t
     if let Some(subject) = &doc.subject {
         let message = subject.message_text();
         let n_whitespace = message.chars().take_while(|c| c.is_whitespace()).count();
-        if n_whitespace != 1 || message.chars().next() != Some(' ') {
+        if n_whitespace != 1 || !message.starts_with(' ') {
             let start = subject.prefix_text().chars().count() as u32;
             let mut lint = make_line_diagnostic(
                 "message should start with 1 space".into(),
@@ -225,7 +227,7 @@ fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
     let mut lints = vec![];
     if let Some(subject) = &doc.subject {
         let message = subject.message_text();
-        if message.len() == 0 || message.chars().all(|c| c.is_whitespace()) {
+        if message.is_empty() || message.chars().all(|c| c.is_whitespace()) {
             let start = subject.prefix_text().chars().count();
             let mut lint = make_line_diagnostic(
                 "empty subject message".into(),
@@ -321,7 +323,7 @@ pub trait LintConfig {
             .enabled_lint_codes()
             .iter()
             .filter_map(|code| {
-                self.get_test(*code).or_else(|| {
+                self.get_test(code).or_else(|| {
                     log_debug!("Missing test for code {:?}", code);
                     None
                 })

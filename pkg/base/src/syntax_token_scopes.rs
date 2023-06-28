@@ -6,9 +6,8 @@ use super::LANGUAGE;
 use lsp_types::SemanticToken;
 
 lazy_static! {
-    static ref HIGHLIGHTS_QUERY: tree_sitter::Query = {
-        tree_sitter::Query::new(LANGUAGE.clone(), tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap()
-    };
+    static ref HIGHLIGHTS_QUERY: tree_sitter::Query =
+        tree_sitter::Query::new(*LANGUAGE, tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap();
     pub static ref SYNTAX_TOKEN_LEGEND: Vec<&'static str> = vec![
         "comment",
         "error",

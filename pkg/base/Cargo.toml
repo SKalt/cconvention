@@ -38,5 +38,5 @@ tracing = ["dep:tracing", "dep:tracing-subscriber"]
 # TODO: separate error reporting feature
 telemetry = ["dep:sentry", "tracing"]
 
-[profile.release]
-lto = true
+# [profile.release]
+# lto = true
