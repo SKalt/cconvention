@@ -1,9 +1,12 @@
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::document::{
-    lints::{construct_default_lint_tests_map, LintConfig, LintFn},
-    GitCommitDocument,
+use crate::{
+    document::{
+        lints::{construct_default_lint_tests_map, LintConfig, LintFn},
+        GitCommitDocument,
+    },
+    git::{get_repo_root, git},
 };
 
 lazy_static! {
@@ -12,25 +15,12 @@ lazy_static! {
 }
 pub trait Config: LintConfig {
     fn repo_root(&self) -> Option<PathBuf> {
-        if let Ok(path) = std::process::Command::new("git")
-            .arg("rev-parse")
-            .arg("--show-toplevel")
-            .output()
-            .map(|output| {
-                std::str::from_utf8(&output.stdout)
-                    .unwrap()
-                    .trim()
-                    .to_owned()
-            })
-            .map(|path| PathBuf::from(path))
-        {
-            return Some(path);
-        } else {
-            return None;
-        }
+        get_repo_root().ok()
     }
     /// the source of the configuration
-    fn source(&self) -> &str; // TODO: change to PathBuf or lsp_types::Url
+    fn source(&self) -> &str;
+    // TODO: ^change to PathBuf or lsp_types::Url
+    // TODO: ^consider removing in favor of a `search_path` method or similar?
     fn type_suggestions(&self) -> Vec<(String, String)> {
         let mut result = Vec::with_capacity(DEFAULT_TYPES.len());
         for (label, detail) in DEFAULT_TYPES {
@@ -40,52 +30,21 @@ pub trait Config: LintConfig {
     }
     fn scope_suggestions(&self) -> Vec<(String, String)> {
         // guess the scopes from the staged files
-        let cwd = self.repo_root().unwrap_or_else(|| PathBuf::from("."));
-        let staged_files: Vec<String> = std::process::Command::new("git")
-            .current_dir(cwd.clone())
-            .arg("--no-pager")
-            .arg("diff")
-            .arg("--name-only")
-            .arg("--cached")
-            .output()
-            .map(|output| {
-                std::str::from_utf8(&output.stdout)
-                    .map(|s| s.to_string())
-                    .unwrap_or("".into())
-            })
+        let staged_files: Vec<String> = git(&["--no-pager", "diff", "--name-only", "--cached"])
             .unwrap_or("".into())
             .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.len() > 0 {
-                    Some(trimmed.to_owned())
-                } else {
-                    None
-                }
-            })
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(|line| line.to_owned())
             .collect();
         let applicable_scopes: Vec<(String, String)> = {
-            let mut cmd = std::process::Command::new("git");
-            cmd.current_dir(cwd)
-                .arg("--no-pager")
-                .arg("log")
-                .arg("--format=%s")
-                .arg("--max-count=1000")
-                .arg("--")
-                .args(staged_files);
-
-            let output = cmd
-                .output()
-                .map(|output| {
-                    std::str::from_utf8(&output.stdout)
-                        .map(|s| s.to_string())
-                        .unwrap_or("".into())
-                })
-                .unwrap_or("".into());
+            let mut args = vec!["log", "--format=%s", "--max-count=1000", "--"];
+            args.extend(staged_files.iter().map(|s| s.as_str()));
+            let output = git(args.as_slice()).unwrap_or("".into());
             let unique: HashMap<&str, u64> = output
                 .lines()
                 .map(|line| line.trim())
-                .filter(|line| line.len() > 0)
+                .filter(|line| !line.is_empty())
                 .filter_map(|line| RE.captures(line))
                 .filter_map(|captures| captures.name("scope"))
                 .filter_map(|scope| Some(scope.as_str()))

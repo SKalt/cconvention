@@ -28,8 +28,9 @@ macro_rules! span {
 
 pub mod config;
 pub mod document;
+pub mod git;
 pub mod server;
-pub mod syntax_token_scopes;
+pub mod syntax_token_scopes; // for convenience
 extern crate serde_json;
 
 lazy_static! {
