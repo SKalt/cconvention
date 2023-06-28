@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Basic Client",
+      "name": "Launch Base Client",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
@@ -13,7 +13,7 @@
         "${workspaceRoot}/examples"
       ],
       "outFiles": ["${workspaceRoot}/client/dist/*.js"],
-      "preLaunchTask": "Build Basic Server and Extension"
+      "preLaunchTask": "Build Base Server and Extension"
     }
   ]
 }

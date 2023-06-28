@@ -6,10 +6,11 @@
       "command": "build",
       "problemMatcher": ["$rustc"],
       "group": "build",
-      "label": "Build Basic Server"
+      "args": ["--package", "base", "--all-features"],
+      "label": "Build Base Server"
     },
     {
-      "label": "Build Basic Extension in Background",
+      "label": "Build Base Extension in Background",
       "group": "build",
       "type": "npm",
       "script": "watch",
@@ -21,7 +22,7 @@
       "isBackground": true
     },
     {
-      "label": "Build Basic Extension",
+      "label": "Build Base Extension",
       "group": "build",
       "type": "npm",
       "script": "build",
@@ -32,8 +33,8 @@
       }
     },
     {
-      "label": "Build Basic Server and Extension",
-      "dependsOn": ["Build Basic Server", "Build Basic Extension"],
+      "label": "Build Base Server and Extension",
+      "dependsOn": ["Build Base Server", "Build Base Extension"],
       "problemMatcher": "$rustc"
     }
   ]
