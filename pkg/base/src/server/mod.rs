@@ -439,7 +439,6 @@ impl<Cfg: Config> Server<Cfg> {
                     result.extend(config::as_completion(
                         &mut self.config.scope_suggestions(commit.worktree_root.clone()),
                     ));
-                    // eprintln!("scope completions: {:?}", result);
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
                     }
