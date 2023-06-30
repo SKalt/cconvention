@@ -28,8 +28,6 @@ lazy_static! {
                 },
             )),
             hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
-            // FIXME: provide hover info about types, scopes
-            // hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
             // TODO: provide selection range
             // selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
             completion_provider: Some(lsp_types::CompletionOptions {
@@ -398,7 +396,7 @@ impl<Cfg: Config> Server<Cfg> {
     }
 
     fn handle_completion(
-        &self,
+        &mut self,
         id: &RequestId,
         params: CompletionParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
@@ -432,7 +430,9 @@ impl<Cfg: Config> Server<Cfg> {
                     // handle type completions
                     result.extend(config::as_completion(&self.config.type_suggestions()));
                 } else if character_index <= scope_len + type_len {
-                    result.extend(config::as_completion(&self.config.scope_suggestions()));
+                    result.extend(config::as_completion(
+                        &mut self.config.scope_suggestions(&uri),
+                    ));
                     // eprintln!("scope completions: {:?}", result);
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
@@ -611,7 +611,7 @@ impl<Cfg: Config> Server<Cfg> {
         Ok(result)
     }
     fn handle_doc_link_request(
-        &self,
+        &mut self,
         id: &RequestId,
         params: DocumentLinkParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
@@ -625,7 +625,8 @@ impl<Cfg: Config> Server<Cfg> {
         Ok(lsp_server::Response {
             id: id.clone(),
             result: Some(
-                serde_json::to_value(commit.get_links(self.config.repo_root().unwrap())).unwrap(),
+                serde_json::to_value(commit.get_links(self.config.repo_root_for(uri).unwrap()))
+                    .unwrap(),
             ),
             error: None,
         })

@@ -6,7 +6,7 @@ use crate::{
         lints::{construct_default_lint_tests_map, LintConfig, LintFn},
         GitCommitDocument,
     },
-    git::{get_repo_root, git},
+    git::{get_worktree_root, git, to_path},
 };
 
 lazy_static! {
@@ -14,8 +14,11 @@ lazy_static! {
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
 pub trait Config: LintConfig {
-    fn repo_root(&self) -> Option<PathBuf> {
-        get_repo_root().ok()
+    /// get the repo root for a given file URL
+    /// most implementations of Config should cache this
+    fn repo_root_for(&mut self, url: &lsp_types::Url) -> Option<PathBuf> {
+        let path = to_path(url).ok()?;
+        get_worktree_root(&path).ok()
     }
     /// the source of the configuration
     fn source(&self) -> &str;
@@ -28,19 +31,23 @@ pub trait Config: LintConfig {
         }
         result
     }
-    fn scope_suggestions(&self) -> Vec<(String, String)> {
+    fn scope_suggestions(&mut self, url: &lsp_types::Url) -> Vec<(String, String)> {
         // guess the scopes from the staged files
-        let staged_files: Vec<String> = git(&["--no-pager", "diff", "--name-only", "--cached"])
-            .unwrap_or("".into())
-            .lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty())
-            .map(|line| line.to_owned())
-            .collect();
+        let worktree_root = self.repo_root_for(url);
+        let staged_files: Vec<String> = git(
+            &["--no-pager", "diff", "--name-only", "--cached"],
+            worktree_root.clone(),
+        )
+        .unwrap_or("".into())
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_owned())
+        .collect();
         let applicable_scopes: Vec<(String, String)> = {
             let mut args = vec!["log", "--format=%s", "--max-count=1000", "--"];
             args.extend(staged_files.iter().map(|s| s.as_str()));
-            let output = git(args.as_slice()).unwrap_or("".into());
+            let output = git(args.as_slice(), worktree_root).unwrap_or("".into());
             let unique: HashMap<&str, u64> = output
                 .lines()
                 .map(|line| line.trim())
@@ -105,6 +112,7 @@ const DEFAULT_TYPES: &[(&str, &str)] = &[
 ];
 // TODO: disabling tracing, error reporting
 pub struct DefaultConfig {
+    git_worktree_roots: HashMap<lsp_types::Url, PathBuf>,
     tests: HashMap<
         &'static str,
         Box<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
@@ -113,6 +121,7 @@ pub struct DefaultConfig {
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig {
+            git_worktree_roots: HashMap::with_capacity(1),
             tests: construct_default_lint_tests_map(50),
         }
     }
@@ -126,5 +135,13 @@ impl LintConfig for DefaultConfig {
 impl Config for DefaultConfig {
     fn source(&self) -> &str {
         "<default>"
+    }
+    fn repo_root_for(&mut self, url: &lsp_types::Url) -> Option<PathBuf> {
+        if let Some(root) = self.git_worktree_roots.get(&url) {
+            return Some(root.clone());
+        }
+        let root = get_worktree_root(&to_path(&url).ok()?).ok()?;
+        self.git_worktree_roots.insert(url.to_owned(), root.clone());
+        Some(root)
     }
 }
