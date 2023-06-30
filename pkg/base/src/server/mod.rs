@@ -420,7 +420,7 @@ impl<Cfg: Config> Server<Cfg> {
         if let Some(subject) = &commit.subject {
             if position.line == subject.line_number as u32 {
                 // consider completions for the cc type, scope
-                // log_debug!("\t{}", subject.debug_ranges());
+                log_debug!("\t{}", subject.debug_ranges());
                 // Using <= since the cursor should still trigger completions if it's at the end of a range
                 let type_len = subject.type_text().chars().count();
                 let scope_len = subject.scope_text().chars().count();

@@ -25,10 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         #[cfg(feature = "telemetry")]
         {
             if std::env::var(format!("{ENV_PREFIX}_DISABLE_TRACING")).is_err() {
-            reg.with(sentry::integrations::tracing::layer()).init();
-        } else {
-            reg.init();
-        };
+                reg.with(sentry::integrations::tracing::layer()).init();
+            } else {
+                reg.init();
+            };
         }
         #[cfg(not(feature = "telemetry"))]
         reg.init();
