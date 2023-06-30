@@ -321,34 +321,34 @@ pub trait LintConfig {
         // for code in self.enabled_lint_codes() {}
         diagnostics.extend(
             self.enabled_lint_codes()
-            .iter()
-            .filter_map(|code| {
-                self.get_test(code).or_else(|| {
-                    log_debug!("Missing test for code {:?}", code);
-                    None
+                .iter()
+                .filter_map(|code| {
+                    self.get_test(code).or_else(|| {
+                        log_debug!("Missing test for code {:?}", code);
+                        None
+                    })
                 })
-            })
-            .map(|f| f(doc))
-            .map(|mut v| {
-                for mut diagnostic in v.iter_mut() {
-                    if diagnostic.severity.is_none() {
-                        match &diagnostic.code {
-                            Some(lsp_types::NumberOrString::String(code)) => {
-                                diagnostic.severity = Some(self.lint_severity(code).to_owned());
-                            }
+                .map(|f| f(doc))
+                .map(|mut v| {
+                    for mut diagnostic in v.iter_mut() {
+                        if diagnostic.severity.is_none() {
+                            match &diagnostic.code {
+                                Some(lsp_types::NumberOrString::String(code)) => {
+                                    diagnostic.severity = Some(self.lint_severity(code).to_owned());
+                                }
                                 Some(bad_code) => {
                                     panic!("Unsupported numeric code: {:?}", bad_code)
                                 }
-                            None => panic!("missing code"),
+                                None => panic!("missing code"),
+                            }
                         }
                     }
-                }
-                v
-            })
-            .reduce(|mut acc, red| {
-                acc.extend(red);
-                acc
-            })
+                    v
+                })
+                .reduce(|mut acc, red| {
+                    acc.extend(red);
+                    acc
+                })
                 .unwrap_or(vec![]),
         );
         diagnostics
