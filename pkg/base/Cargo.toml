@@ -22,6 +22,7 @@ tracing-subscriber = {version = "0.3", optional = true, features = ["registry"]}
 
 [dependencies.sentry]
 version = "0.31.5"
+default-features = false
 features = [
   # defaults, less "transport"
   "backtrace", "contexts", "debug-images", "panic",
