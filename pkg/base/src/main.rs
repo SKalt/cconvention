@@ -8,6 +8,7 @@ use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
 
 fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    // TODO: accept (-h|--help) and (-v|--version) flags
     #[cfg(feature = "tracing")]
     {
         let reg = tracing_subscriber::Registry::default().with(

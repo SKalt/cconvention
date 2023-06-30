@@ -78,7 +78,7 @@ lazy_static! {
             execute_command_provider: None, // maybe later for executing code blocks
             workspace: None,            // maybe later, for git history inspection
             semantic_tokens_provider: Some(
-                // provides syntax highlighting!
+                // provides some syntax highlighting!
                 lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
                     lsp_types::SemanticTokensOptions {
                         work_done_progress_options: lsp_types::WorkDoneProgressOptions {
@@ -93,7 +93,7 @@ lazy_static! {
                             // lsp_types::SemanticTokenModifier
                             ],
                         },
-                        range: None, // TODO: injection ranges
+                        range: None, // TODO: injection ranges?
                         full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
                     },
                 ),
@@ -235,11 +235,11 @@ impl<Cfg: Config> Server<Cfg> {
         }
         handle!(DidChangeTextDocument => handle_did_change);
         handle!(DidOpenTextDocument => handle_open);
-        handle!(Exit => handle_exit);
-        // DidChangeConfiguration
+        handle!(DidChangeConfiguration => handle_config_change);
         // WillSaveTextDocument
         handle!(DidCloseTextDocument => handle_close);
         handle!(DidSaveTextDocument => handle_save);
+        handle!(Exit => handle_exit);
         // DidChangeWatchedFiles
         // WorkDoneProgressCancel
 
@@ -306,7 +306,7 @@ impl<Cfg: Config> Server<Cfg> {
             self.config.lint(commit)
         };
         self.publish_diagnostics(uri, diagnostics);
-        return Ok(ServerLoopAction::Continue);
+        Ok(ServerLoopAction::Continue)
     }
     fn handle_save(
         &mut self,
@@ -373,7 +373,6 @@ impl<Cfg: Config> Server<Cfg> {
                 data: None,
             }),
         };
-        // eprintln!("response: {:?}", response);
         Ok(response)
     }
     fn handle_formatting(

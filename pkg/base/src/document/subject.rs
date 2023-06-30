@@ -329,6 +329,7 @@ impl Subject {
         let mut lints = vec![];
         let scope_text = self.scope_text();
         if scope_text.is_empty() {
+            // no scope to check
             return lints;
         }
         let start = self.type_text().chars().count();
