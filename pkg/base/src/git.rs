@@ -25,8 +25,6 @@ pub fn git(
 pub(crate) fn to_path(
     url: &lsp_types::Url,
 ) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
-    log_debug!("scheme: {:?}", url.scheme());
-    log_debug!("host: {:?}", url.host());
     match url.scheme() {
         "file" => match url.to_file_path() {
             Ok(path) => Ok(path),

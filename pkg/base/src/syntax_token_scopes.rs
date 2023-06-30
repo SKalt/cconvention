@@ -34,9 +34,7 @@ pub(crate) fn handle_all_tokens(
     doc: &crate::document::GitCommitDocument,
     _params: lsp_types::SemanticTokensParams,
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
-    // eprintln!("params: {:?}", params);
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
-    // let bytes = ;
     let mut cursor = tree_sitter::QueryCursor::new();
     let code = doc.code.to_string();
     let matches = cursor.matches(
@@ -55,9 +53,7 @@ pub(crate) fn handle_all_tokens(
             // TODO: handle if the client doesn't support overlapping tokens
             match capture_name {
                 "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
-                _other => {
-                    // eprintln!("capture::<{}>", other);
-                }
+                _other => {}
             };
             let range = c.node.range();
             let start_line: u32 = range.start_point.row.try_into().unwrap();
@@ -69,7 +65,6 @@ pub(crate) fn handle_all_tokens(
             };
             let delta_start: u32 = {
                 let token_start: u32 = range.start_point.column.try_into().unwrap();
-                // eprintln!("token_start: {}; start {}", token_start, start);
                 if token_start == 0 {
                     0
                 } else {

@@ -112,8 +112,6 @@ impl GitCommitDocument {
             let range = edit.range.unwrap();
             let start_byte = find_byte_offset(&self.code, range.start);
             let end_byte = find_byte_offset(&self.code, range.end);
-
-            log_debug!("start..end byte: {}..{}", start_byte, end_byte);
             self.code.replace(start_byte..end_byte, &edit.text);
             let new_end_position = match edit.text.rfind('\n') {
                 Some(ind) => {
@@ -227,10 +225,6 @@ impl GitCommitDocument {
                 // a trailer can be only one line
                 // line numbers are 0-indexed, and that's expected
                 line_numbers.push(c.node.range().start_point.row as u32);
-                // let trailer_text = trailer.utf8_text(code.as_bytes()).unwrap();
-                // eprintln!("trailer: {}", trailer_text);
-                // eprintln!("\tstart: {:?}", trailer.range().start_point);
-                // eprintln!("\tend: {:?}", trailer.range().end_point);
             }
         }
         line_numbers
@@ -245,8 +239,6 @@ impl GitCommitDocument {
             for c in m.captures {
                 let text = c.node.utf8_text(code.as_bytes()).unwrap();
                 let path = repo_root.join(text);
-                // eprintln!("repo root: {:?}", repo_root);
-                // eprintln!("path: {:?}", path);
                 let range = c.node.range();
                 result.push(lsp_types::DocumentLink {
                     range: lsp_types::Range {
