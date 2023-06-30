@@ -1,6 +1,9 @@
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf};
 
+/// use this for reading configuration from the environment
+pub const ENV_PREFIX: &str = "GIT_CC_LS";
+
 use crate::{
     document::{
         lints::{construct_default_lint_tests_map, LintConfig, LintFn},

@@ -1,5 +1,5 @@
 use atty::{self, Stream};
-use base::log_info;
+use base::{config::ENV_PREFIX, log_info};
 
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
@@ -22,17 +22,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
                 })),
         );
         #[cfg(feature = "telemetry")]
-        if std::env::var("GIT_CC_DISABLE_TRACING").is_err() {
-            // TODO: decide on consistent env var prefix
+        {
+            if std::env::var(format!("{ENV_PREFIX}_DISABLE_TRACING")).is_err() {
             reg.with(sentry::integrations::tracing::layer()).init();
         } else {
             reg.init();
         };
+        }
         #[cfg(not(feature = "telemetry"))]
         reg.init();
     }
     #[cfg(feature = "telemetry")]
-    let _guard = if std::env::var("GIT_CC_DISABLE_ERROR_REPORTING").is_err() {
+    let _guard = if std::env::var(format!("{ENV_PREFIX}_DISABLE_ERROR_REPORTING")).is_err() {
         Some(sentry::init((
             SENTRY_DSN,
             sentry::ClientOptions {
@@ -41,7 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
                 traces_sample_rate: 1.0, // TODO: reduce sampling rate
                 enable_profiling: true,
                 profiles_sample_rate: 1.0, // TODO: reduce sampling rate
-                debug: true,
                 ..Default::default()
             },
         )))
