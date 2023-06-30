@@ -71,7 +71,7 @@ impl GitCommitDocument {
                 let subject = Subject::new(subject_line, line_number);
                 log_debug!("new subject:");
                 log_debug!("\t{}", subject.line);
-                log_debug!("\t{}", subject.debug_ranges());
+                // log_debug!("\t{}", subject.debug_ranges());
 
                 Some(subject)
             } else {

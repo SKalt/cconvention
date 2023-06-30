@@ -284,6 +284,7 @@ impl Subject {
 
 // lookaround & ranges
 impl Subject {
+    #[cfg(test)]
     pub(crate) fn debug_ranges(&self) -> String {
         // TODO: ensure this function call is a no-op in release builds
         let n_chars = self.line.chars().count();
