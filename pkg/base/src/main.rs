@@ -13,7 +13,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         let reg = tracing_subscriber::Registry::default().with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
-                .with_ansi(atty::is(Stream::Stderr)),
+                .with_ansi(atty::is(Stream::Stderr))
+                .with_filter(tracing_subscriber::filter::filter_fn(|meta| {
+                    match meta.module_path() {
+                        Some(path) => path.starts_with(module_path!()),
+                        None => false,
+                    }
+                })),
         );
         #[cfg(feature = "telemetry")]
         if std::env::var("GIT_CC_DISABLE_TRACING").is_err() {
