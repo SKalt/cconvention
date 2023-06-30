@@ -20,7 +20,7 @@ const DEFAULT_LINTS: &[&str] = &[
     BODY_LEADING_BLANK,
     FOOTER_LEADING_BLANK,
     HEADER_MAX_LENGTH,
-    SCOPE_EMPTY,
+    // SCOPE_EMPTY,
     SUBJECT_EMPTY,
     SUBJECT_LEADING_SPACE,
 ];
@@ -259,7 +259,7 @@ pub(crate) fn construct_default_lint_tests_map(
     insert!(BODY_LEADING_BLANK, check_body_leading_blank);
     insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
     // TODO: check there's exactly `n` leading blank lines before trailers?
-    insert!(SCOPE_EMPTY, check_scope_present);
+    // insert!(SCOPE_EMPTY, check_scope_present);
     insert!(SUBJECT_EMPTY, check_subject_empty);
     insert!(SUBJECT_LEADING_SPACE, check_subject_leading_space);
     h
@@ -319,8 +319,8 @@ pub trait LintConfig {
         diagnostics.extend(doc.get_mandatory_lints());
         // let code_map = construct_default_lint_tests_map(self);
         // for code in self.enabled_lint_codes() {}
-        let diagnostics = self
-            .enabled_lint_codes()
+        diagnostics.extend(
+            self.enabled_lint_codes()
             .iter()
             .filter_map(|code| {
                 self.get_test(code).or_else(|| {
@@ -336,7 +336,9 @@ pub trait LintConfig {
                             Some(lsp_types::NumberOrString::String(code)) => {
                                 diagnostic.severity = Some(self.lint_severity(code).to_owned());
                             }
-                            Some(bad_code) => panic!("Unsupported numeric code: {:?}", bad_code),
+                                Some(bad_code) => {
+                                    panic!("Unsupported numeric code: {:?}", bad_code)
+                                }
                             None => panic!("missing code"),
                         }
                     }
@@ -347,8 +349,8 @@ pub trait LintConfig {
                 acc.extend(red);
                 acc
             })
-            .unwrap_or(vec![]);
-
+                .unwrap_or(vec![]),
+        );
         diagnostics
     }
     /// 0 means no limit

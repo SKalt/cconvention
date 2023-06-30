@@ -365,13 +365,10 @@ impl Subject {
             .any(|c| !c.is_whitespace() && c != '(' && c != ')')
         {
             let mut lint = make_line_diagnostic(
-                // lints::INVALID,
-                // lsp_types::DiagnosticSeverity::ERROR,
-                "Missing scope text".into(),
+                "Missing scope text.".into(),
                 self.line_number as usize,
-                start.try_into().unwrap(),
-                end.try_into().unwrap(),
-                // config,
+                start as u32,
+                end as u32,
             );
             lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
@@ -379,7 +376,7 @@ impl Subject {
         }
         if scope_text.chars().any(|c| c.is_whitespace()) {
             let mut lint = make_line_diagnostic(
-                "Scope contains whitespace".into(),
+                "Scope contains whitespace.".into(),
                 self.line_number as usize,
                 start.try_into().unwrap(),
                 end.try_into().unwrap(),
