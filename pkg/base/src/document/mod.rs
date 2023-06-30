@@ -7,7 +7,11 @@ use crop::{Rope, RopeSlice};
 use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
 
-use crate::{document::lints::INVALID, LANGUAGE};
+use crate::{
+    document::lints::INVALID,
+    git::{get_worktree_root, to_path},
+    LANGUAGE,
+};
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
@@ -39,17 +43,13 @@ pub struct GitCommitDocument {
     parser: tree_sitter::Parser, // since the parser is stateful, it needs to be owned by the document
     pub syntax_tree: tree_sitter::Tree,
     pub subject: Option<Subject>,
+    pub worktree_root: Option<PathBuf>,
 }
 
 /// state management for a git commit document
 impl GitCommitDocument {
-    pub(crate) fn new(text: String) -> Self {
-        let code = crop::Rope::from(text.clone());
-        let subject = if let Some((subject, line_number)) = get_subject_line(&code) {
-            Some(Subject::new(subject.to_string(), line_number))
-        } else {
-            None
-        };
+    pub(crate) fn new() -> Self {
+        let code = crop::Rope::from("".to_string());
         let mut parser = {
             let language = tree_sitter_gitcommit::language();
             let mut parser = tree_sitter::Parser::new();
@@ -57,15 +57,35 @@ impl GitCommitDocument {
             parser.set_timeout_micros(500_000); // .5 seconds
             parser
         };
-        let syntax_tree = parser.parse(&text, None).unwrap();
+        let syntax_tree = parser.parse("", None).unwrap();
+
         GitCommitDocument {
             code,
             parser,
             syntax_tree,
-            subject,
+            worktree_root: None,
+            subject: None,
         }
     }
-    fn update_subject(&mut self) {
+    pub fn with_url(mut self, url: &lsp_types::Url) -> Self {
+        self.worktree_root = to_path(url)
+            .ok()
+            .map(|path| get_worktree_root(&path).ok())
+            .flatten();
+        self
+    }
+
+    pub fn set_text(&mut self, text: String) -> &mut Self {
+        self.code = crop::Rope::from(text.clone());
+        self.syntax_tree = self.parser.parse(&text, None).unwrap();
+        self
+    }
+    pub fn with_text(mut self, text: String) -> Self {
+        self.set_text(text);
+        self
+    }
+
+    fn update_subject(&mut self) -> &mut Self {
         self.subject =
             if let Some((subject_line, line_number)) = self.get_subject_line_with_number() {
                 let subject = Subject::new(subject_line, line_number);
@@ -77,6 +97,7 @@ impl GitCommitDocument {
             } else {
                 None
             };
+        self
     }
     pub(crate) fn edit(
         &mut self,

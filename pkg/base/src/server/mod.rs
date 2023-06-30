@@ -266,10 +266,10 @@ impl<Cfg: Config> Server<Cfg> {
         params: DidOpenTextDocumentParams,
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         let uri = params.text_document.uri;
-        self.commits.insert(
-            uri.clone(),
-            GitCommitDocument::new(params.text_document.text),
-        );
+        let doc = GitCommitDocument::new()
+            .with_text(params.text_document.text)
+            .with_url(&uri);
+        self.commits.insert(uri.clone(), doc);
         let commit = self.commits.get(&uri).unwrap();
         self.publish_diagnostics(uri, self.config.lint(commit));
         Ok(ServerLoopAction::Continue)
@@ -315,14 +315,21 @@ impl<Cfg: Config> Server<Cfg> {
         // in case incremental updates are messing up the text, try to refresh on-save
         if let Some(text) = params.text {
             let uri = params.text_document.uri;
+            let commit = self.commits.get_mut(&uri).unwrap();
             log_debug!("refreshing syntax tree");
-            let commit = GitCommitDocument::new(text);
-            self.publish_diagnostics(uri.clone(), self.config.lint(&commit));
-            self.commits.insert(uri, commit);
+            commit.set_text(text);
+            let diagnostics = self.config.lint(&commit);
+            self.publish_diagnostics(uri.clone(), diagnostics);
         }
         Ok(ServerLoopAction::Continue)
     }
-
+    fn handle_config_change(
+        &mut self,
+        params: lsp_types::DidChangeConfigurationParams,
+    ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
+        log_debug!("{:?}", params);
+        Ok(ServerLoopAction::Continue)
+    }
     fn handle_exit(&mut self, _: ()) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         Ok(ServerLoopAction::Break)
     }
@@ -430,7 +437,7 @@ impl<Cfg: Config> Server<Cfg> {
                     result.extend(config::as_completion(&self.config.type_suggestions()));
                 } else if character_index <= scope_len + type_len {
                     result.extend(config::as_completion(
-                        &mut self.config.scope_suggestions(&uri),
+                        &mut self.config.scope_suggestions(commit.worktree_root.clone()),
                     ));
                     // eprintln!("scope completions: {:?}", result);
                     if let Some(first) = result.first_mut() {
@@ -624,7 +631,7 @@ impl<Cfg: Config> Server<Cfg> {
         Ok(lsp_server::Response {
             id: id.clone(),
             result: Some(
-                serde_json::to_value(commit.get_links(self.config.repo_root_for(uri).unwrap()))
+                serde_json::to_value(commit.get_links(commit.worktree_root.clone().unwrap()))
                     .unwrap(),
             ),
             error: None,

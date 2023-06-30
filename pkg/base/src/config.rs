@@ -17,12 +17,6 @@ lazy_static! {
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
 pub trait Config: LintConfig {
-    /// get the repo root for a given file URL
-    /// most implementations of Config should cache this
-    fn repo_root_for(&mut self, url: &lsp_types::Url) -> Option<PathBuf> {
-        let path = to_path(url).ok()?;
-        get_worktree_root(&path).ok()
-    }
     /// the source of the configuration
     fn source(&self) -> &str;
     // TODO: ^change to PathBuf or lsp_types::Url
@@ -34,9 +28,8 @@ pub trait Config: LintConfig {
         }
         result
     }
-    fn scope_suggestions(&mut self, url: &lsp_types::Url) -> Vec<(String, String)> {
+    fn scope_suggestions(&mut self, worktree_root: Option<PathBuf>) -> Vec<(String, String)> {
         // guess the scopes from the staged files
-        let worktree_root = self.repo_root_for(url);
         let staged_files: Vec<String> = git(
             &["--no-pager", "diff", "--name-only", "--cached"],
             worktree_root.clone(),
@@ -97,7 +90,7 @@ pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::Comple
     result
 }
 
-const DEFAULT_TYPES: &[(&str, &str)] = &[
+pub const DEFAULT_TYPES: &[(&str, &str)] = &[
     ("feat", "adds a new feature"),
     ("fix", "fixes a bug"),
     ("docs", "changes only the documentation"),
@@ -138,13 +131,5 @@ impl LintConfig for DefaultConfig {
 impl Config for DefaultConfig {
     fn source(&self) -> &str {
         "<default>"
-    }
-    fn repo_root_for(&mut self, url: &lsp_types::Url) -> Option<PathBuf> {
-        if let Some(root) = self.git_worktree_roots.get(&url) {
-            return Some(root.clone());
-        }
-        let root = get_worktree_root(&to_path(&url).ok()?).ok()?;
-        self.git_worktree_roots.insert(url.to_owned(), root.clone());
-        Some(root)
     }
 }
