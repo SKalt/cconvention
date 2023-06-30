@@ -108,7 +108,6 @@ pub const DEFAULT_TYPES: &[(&str, &str)] = &[
 ];
 // TODO: disabling tracing, error reporting
 pub struct DefaultConfig {
-    git_worktree_roots: HashMap<lsp_types::Url, PathBuf>,
     tests: HashMap<
         &'static str,
         Box<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
@@ -117,7 +116,6 @@ pub struct DefaultConfig {
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig {
-            git_worktree_roots: HashMap::with_capacity(1),
             tests: construct_default_lint_tests_map(50),
         }
     }
