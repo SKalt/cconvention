@@ -4,13 +4,11 @@ use std::{collections::HashMap, path::PathBuf};
 /// use this for reading configuration from the environment
 pub const ENV_PREFIX: &str = "GIT_CC_LS";
 
-use crate::{
-    document::{
-        lints::{construct_default_lint_tests_map, LintConfig, LintFn},
-        GitCommitDocument,
-    },
-    git::git,
+use crate::document::{
+    lints::{construct_default_lint_tests_map, LintConfig, LintFn},
+    GitCommitDocument,
 };
+use crate::git;
 
 lazy_static! {
     static ref RE: Regex =
@@ -34,6 +32,7 @@ pub const DEFAULT_TYPES: &[(&str, &str)] = &[
     ("revert", "reverts prior changes"),
 ];
 
+/// provides
 pub trait Config: LintConfig {
     /// the source of the configuration
     fn source(&self) -> &str;
@@ -48,28 +47,17 @@ pub trait Config: LintConfig {
     }
     fn scope_suggestions(&self, worktree_root: Option<PathBuf>) -> Vec<(String, String)> {
         // guess the scopes from the staged files
-        let staged_files: Vec<String> = git(
-            &["diff", "--name-only", "--cached"],
-            worktree_root.clone(),
-        )
-        .unwrap_or("".into()) // fail silently, returning an empty string if git fails
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(|line| line.to_owned())
-        .collect();
+        let files = git::staged_files(worktree_root.clone());
         let applicable_scopes: Vec<(String, String)> = {
-            let mut args = vec!["log", "--format=%s", "--max-count=1000", "--"];
-            args.extend(staged_files.iter().map(|s| s.as_str()));
-            let output = git(args.as_slice(), worktree_root).unwrap_or("".into());
-            let unique: HashMap<&str, u64> = output
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty())
+            let output = git::related_commits(files.as_slice(), worktree_root.clone());
+            let unique: HashMap<&str, usize> = output
+                .iter()
                 .filter_map(|line| RE.captures(line))
                 .filter_map(|captures| captures.name("scope"))
                 .filter_map(|scope| Some(scope.as_str()))
-                .fold(HashMap::<&str, u64>::new(), |mut set, scope| {
+                // using an integer smaller than usize won't matter, since we're iterating
+                // over tuples of `(&str, _)` later which have alignment on usize boundaries.
+                .fold(HashMap::<&str, usize>::new(), |mut set, scope| {
                     if let Some(count) = set.get_mut(scope) {
                         *count += 1;
                     } else {
@@ -77,7 +65,7 @@ pub trait Config: LintConfig {
                     };
                     set
                 });
-            let mut sorted_descending: Vec<(&str, u64)> = unique.into_iter().collect();
+            let mut sorted_descending: Vec<(&str, usize)> = unique.into_iter().collect();
             sorted_descending.sort_by(|a, b| b.1.cmp(&a.1));
             sorted_descending
                 .into_iter()

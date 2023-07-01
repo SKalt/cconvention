@@ -91,3 +91,27 @@ pub fn get_worktree_root(
             },
         )
 }
+
+pub fn staged_files(cwd: Option<PathBuf>) -> Vec<String> {
+    git(
+            &["diff", "--name-only", "--cached"],
+            cwd,
+        )
+        .unwrap_or("".into()) // fail silently, returning an empty string if git fails
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_owned())
+        .collect()
+}
+
+pub fn related_commits(staged_files: &[String], cwd: Option<PathBuf>) -> Vec<String> {
+    let mut args = vec!["log", "--format=%s", "--max-count=1000", "--"];
+    args.extend(staged_files.iter().map(|s| s.as_str()));
+    git(args.as_slice(), cwd).unwrap_or(String::new()) // fail silently, returning an empty string if git fails
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|s| s.to_owned()) // TODO: fewer allocations
+        .collect()
+}
