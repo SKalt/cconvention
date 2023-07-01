@@ -44,7 +44,7 @@ lazy_static! {
 
     static ref BAD_TRAILER_QUERY: tree_sitter::Query = tree_sitter::Query::new(
         *LANGUAGE,
-        "(trailer (token) @token (value)? @value)",
+        include_str!("./queries/bad_trailer.scm"),
     ).unwrap();
 
     // static ref Thing: HashMap<&'static str, Arc<dyn Fn()>> = HashMap::new();
@@ -148,38 +148,61 @@ fn check_footer_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_ty
     lints
 }
 
-/// Check all trailers have both a key and a value
-pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
+fn query_lint(
+    doc: &GitCommitDocument,
+    query: &tree_sitter::Query,
+    code: &str,
+    message: &str,
+) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     let mut cursor = tree_sitter::QueryCursor::new();
+    // FIXME: don't re-allocate the entire document text
+    // let bytes = doc.code.chunks();
+    // let matches = cursor.matches(query, doc.syntax_tree.root_node(), move |node| {
+    //     bytes.into_iter().map(|chunk| chunk.as_bytes())
+    // });
+    let names = query.capture_names();
+    let mut required_missing: bool = names.iter().any(|name| name == "required");
     let text = doc.code.to_string();
-    let trailers = cursor.matches(
-        &BAD_TRAILER_QUERY,
-        doc.syntax_tree.root_node(),
-        text.as_bytes(),
-    );
-    for trailer_match in trailers {
-        debug_assert!(trailer_match.captures.len() == 2);
-        let value = trailer_match.captures[1].node;
-        let value_text = value.utf8_text(text.as_bytes()).unwrap().trim();
-        if value_text.is_empty() {
-            let key = trailer_match.captures[0].node;
-            let key_text = key.utf8_text(text.as_bytes()).unwrap();
-            let start = value.start_position();
-            let end = value.end_position();
-            let mut lint = make_diagnostic(
-                start.row,
-                start.column as u32,
-                end.row,
-                end.column as u32,
-                format!("Empty value for trailer {:?}", key_text),
-            );
-            lint.code = Some(lsp_types::NumberOrString::String(INVALID.into()));
-            lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
-            lints.push(lint);
+    let matches = cursor.matches(query, doc.syntax_tree.root_node(), text.as_bytes());
+    for m in matches {
+        for c in m.captures {
+            let name = &names[c.index as usize];
+            if name == "forbidden" {
+                let start = c.node.start_position();
+                let end = c.node.end_position();
+                let mut lint = make_diagnostic(
+                    start.row,
+                    start.column as u32,
+                    end.row,
+                    end.column as u32,
+                    message.to_string(),
+                );
+                lint.code = Some(lsp_types::NumberOrString::String(code.into()));
+                lints.push(lint);
+            } else if name == "required" {
+                required_missing = false;
         }
     }
+    }
+
+    if required_missing {
+        let mut lint = make_diagnostic(0, 0, 0, 0, message.to_string());
+        lint.code = Some(lsp_types::NumberOrString::String(code.into()));
+        lints.push(lint);
+    }
+
     lints
+}
+
+/// Check all trailers have both a key and a value
+pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
+    query_lint(
+        doc,
+        &BAD_TRAILER_QUERY,
+        "INVALID",
+        "Empty value for trailer.",
+    )
 }
 
 fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
