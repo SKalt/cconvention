@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     } else {
         None
     };
-    let cfg = base::config::DefaultConfig::new();
+    let cfg = base::config::DefaultConfigStore::new();
     base::server::Server::from_stdio(cfg)
         .init(&base::server::CAPABILITIES)?
         .serve()?;

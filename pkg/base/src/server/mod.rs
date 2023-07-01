@@ -1,3 +1,4 @@
+use crate::config::ConfigStore;
 use crate::{config, syntax_token_scopes};
 use crate::{config::Config, document::GitCommitDocument};
 use core::panic;
@@ -106,7 +107,7 @@ lazy_static! {
 }
 /// a Server instance owns a `lsp_server::Connection` instance and a mutable
 /// syntax tree, representing an actively edited .git/GIT_COMMIT_EDITMSG file.
-pub struct Server<Cfg: Config> {
+pub struct Server<Cfg: ConfigStore> {
     config: Cfg,
     commits: HashMap<lsp_types::Url, GitCommitDocument>,
     connection: lsp_server::Connection,
@@ -149,7 +150,7 @@ where
 }
 
 // basic methods
-impl<Cfg: Config> Server<Cfg> {
+impl<Cfg: ConfigStore> Server<Cfg> {
     /// communicate the server's capabilities with the client
     pub fn init(
         &mut self,
@@ -220,7 +221,7 @@ impl<Cfg: Config> Server<Cfg> {
 }
 
 // notification handlers
-impl<Cfg: Config> Server<Cfg> {
+impl<Cfg: ConfigStore> Server<Cfg> {
     fn handle_notification(
         &mut self,
         notification: lsp_server::Notification,
@@ -271,7 +272,8 @@ impl<Cfg: Config> Server<Cfg> {
             .with_url(&uri);
         self.commits.insert(uri.clone(), doc);
         let commit = self.commits.get(&uri).unwrap();
-        self.publish_diagnostics(uri, self.config.lint(commit));
+        let cfg = self.config.get(commit.worktree_root.clone());
+        self.publish_diagnostics(uri, cfg.lint(commit));
         Ok(ServerLoopAction::Continue)
     }
     fn handle_close(
@@ -296,14 +298,12 @@ impl<Cfg: Config> Server<Cfg> {
     ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         let uri = params.text_document.uri;
         let diagnostics = {
-            let commit = self.commits.get_mut(&uri);
-            if commit.is_none() {
-                // return Err(Box::new(Error::format!("No document {uri}")));
-                panic!("No document {uri}")
-            }
-            let commit = commit.unwrap();
+            let commit = self
+                .commits
+                .get_mut(&uri)
+                .ok_or(format!("No document {uri}"))?;
             commit.edit(&params.content_changes);
-            self.config.lint(commit)
+            self.config.get(commit.worktree_root.clone()).lint(commit)
         };
         self.publish_diagnostics(uri, diagnostics);
         Ok(ServerLoopAction::Continue)
@@ -318,7 +318,7 @@ impl<Cfg: Config> Server<Cfg> {
             let commit = self.commits.get_mut(&uri).unwrap();
             log_debug!("refreshing syntax tree");
             commit.set_text(text);
-            let diagnostics = self.config.lint(&commit);
+            let diagnostics = self.config.get(commit.worktree_root.clone()).lint(&commit);
             self.publish_diagnostics(uri.clone(), diagnostics);
         }
         Ok(ServerLoopAction::Continue)
@@ -336,7 +336,7 @@ impl<Cfg: Config> Server<Cfg> {
 }
 
 // request handlers for specific methods
-impl<Cfg: Config> Server<Cfg> {
+impl<Cfg: ConfigStore> Server<Cfg> {
     fn handle_request(
         &mut self,
         request: lsp_server::Request,
@@ -434,10 +434,18 @@ impl<Cfg: Config> Server<Cfg> {
                 let rest_len = subject.rest_text().chars().count();
                 if character_index <= type_len {
                     // handle type completions
-                    result.extend(config::as_completion(&self.config.type_suggestions()));
+                    result.extend(config::as_completion(
+                        &self
+                            .config
+                            .get(commit.worktree_root.clone())
+                            .type_suggestions(),
+                    ));
                 } else if character_index <= scope_len + type_len {
                     result.extend(config::as_completion(
-                        &mut self.config.scope_suggestions(commit.worktree_root.clone()),
+                        &mut self
+                            .config
+                            .get(commit.worktree_root.clone())
+                            .scope_suggestions(),
                     ));
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
@@ -541,7 +549,7 @@ impl<Cfg: Config> Server<Cfg> {
     /// provide docs on-hover of types
     /// see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_hover
     fn handle_hover(
-        &self,
+        &mut self,
         id: &RequestId,
         params: HoverParams,
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
@@ -560,6 +568,7 @@ impl<Cfg: Config> Server<Cfg> {
                 if _position.character <= _type_len as u32 {
                     if let Some((_, doc)) = self
                         .config
+                        .get(commit.worktree_root.clone())
                         .type_suggestions()
                         .iter()
                         .find(|(type_, _doc)| type_.as_str() == _type_text)

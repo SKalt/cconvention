@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 /// use this for reading configuration from the environment
 pub const ENV_PREFIX: &str = "GIT_CC_LS";
@@ -34,8 +34,6 @@ pub const DEFAULT_TYPES: &[(&str, &str)] = &[
 
 /// provides
 pub trait Config: LintConfig {
-    /// the source of the configuration
-    fn source(&self) -> &str;
     // TODO: ^change to PathBuf or lsp_types::Url
     // TODO: ^consider removing in favor of a `search_path` method or similar?
     fn type_suggestions(&self) -> Vec<(String, String)> {
@@ -45,8 +43,9 @@ pub trait Config: LintConfig {
         }
         result
     }
-    fn scope_suggestions(&self, worktree_root: Option<PathBuf>) -> Vec<(String, String)> {
+    fn scope_suggestions(&self) -> Vec<(String, String)> {
         // guess the scopes from the staged files
+        let worktree_root = self.worktree_root();
         let files = git::staged_files(worktree_root.clone());
         let applicable_scopes: Vec<(String, String)> = {
             let output = git::related_commits(files.as_slice(), worktree_root.clone());
@@ -96,29 +95,50 @@ pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::Comple
     result
 }
 
+pub trait ConfigStore {
+    fn get(&mut self, worktree_root: Option<PathBuf>) -> Arc<dyn Config>;
+    // self has to ^ be mutable because we might need to update the cache of configurations
+}
+
+pub struct DefaultConfigStore(DefaultConfig);
+impl DefaultConfigStore {
+    pub fn new() -> Self {
+        DefaultConfigStore(DefaultConfig::new())
+    }
+}
+impl ConfigStore for DefaultConfigStore {
+    fn get(&mut self, worktree_root: Option<PathBuf>) -> Arc<dyn Config> {
+        let mut cfg = self.0.clone();
+        cfg.worktree_root = worktree_root;
+        Arc::new(cfg)
+    }
+}
+
 // TODO: disabling tracing, error reporting
+#[derive(Clone)]
 pub struct DefaultConfig {
+    worktree_root: Option<PathBuf>,
     tests: HashMap<
         &'static str,
-        Box<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
+        Arc<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
     >,
 }
 
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig {
+            worktree_root: None,
             tests: construct_default_lint_tests_map(50),
         }
     }
 }
 
 impl LintConfig for DefaultConfig {
-    fn get_test(&self, code: &str) -> Option<&Box<LintFn>> {
+    fn worktree_root(&self) -> Option<PathBuf> {
+        self.worktree_root.clone()
+    }
+    fn get_test(&self, code: &str) -> Option<&Arc<LintFn>> {
         self.tests.get(code)
     }
 }
-impl Config for DefaultConfig {
-    fn source(&self) -> &str {
-        "<default>"
-    }
-}
+impl Config for DefaultConfig {}

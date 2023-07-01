@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use super::GitCommitDocument;
 
@@ -244,17 +244,17 @@ fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
 
 pub(crate) fn construct_default_lint_tests_map(
     cutoff: u8,
-) -> HashMap<&'static str, Box<LintFn<'static>>> {
+) -> HashMap<&'static str, Arc<LintFn<'static>>> {
     // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Box`ed fns
-    let mut h: HashMap<&str, Box<LintFn>> = HashMap::with_capacity(2);
+    let mut h: HashMap<&str, Arc<LintFn>> = HashMap::with_capacity(2);
     macro_rules! insert {
         ($id:ident, $f:ident) => {
-            h.insert($id, Box::new(move |doc| $f(doc, $id)));
+            h.insert($id, Arc::new(move |doc| $f(doc, $id)));
         };
     }
     h.insert(
         HEADER_MAX_LENGTH,
-        Box::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LENGTH, cutoff)),
+        Arc::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LENGTH, cutoff)),
     );
     insert!(BODY_LEADING_BLANK, check_body_leading_blank);
     insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
@@ -300,6 +300,11 @@ pub(crate) fn make_line_diagnostic(
 }
 
 pub trait LintConfig {
+    /// provides information to the user about where the lint configuration came from.
+    fn source(&self) -> &str {
+        "<default>"
+    }
+    fn worktree_root(&self) -> Option<PathBuf>;
     fn enabled_lint_codes(&self) -> &[&str] {
         DEFAULT_LINTS
     }
@@ -310,11 +315,8 @@ pub trait LintConfig {
     }
 
     // fn lint_tests(&self) -> &HashMap<&str, Box<LintFn>>;
-    fn get_test(&self, code: &str) -> Option<&Box<LintFn>>;
-    fn lint(&self, doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic>
-    where
-        Self: Sized,
-    {
+    fn get_test(&self, code: &str) -> Option<&Arc<LintFn>>;
+    fn lint(&self, doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
         let mut diagnostics = vec![];
         diagnostics.extend(doc.get_mandatory_lints());
         // let code_map = construct_default_lint_tests_map(self);
