@@ -1,11 +1,60 @@
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+
 use atty::{self, Stream};
-use base::{config::ENV_PREFIX, log_info};
+use base::{
+    config::ENV_PREFIX,
+    document::{lints::construct_default_lint_tests_map, GitCommitDocument},
+    log_info,
+};
 
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 
 #[cfg(feature = "telemetry")]
 const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
+
+pub struct DefaultConfigStore(DefaultConfig);
+impl DefaultConfigStore {
+    pub fn new() -> Self {
+        DefaultConfigStore(DefaultConfig::new())
+    }
+}
+impl base::config::ConfigStore for DefaultConfigStore {
+    fn get(&mut self, worktree_root: Option<PathBuf>) -> Arc<dyn base::config::Config> {
+        let mut cfg = self.0.clone();
+        cfg.worktree_root = worktree_root;
+        Arc::new(cfg)
+    }
+}
+
+// TODO: disabling tracing, error reporting
+#[derive(Clone)]
+pub struct DefaultConfig {
+    worktree_root: Option<PathBuf>,
+    tests: HashMap<
+        &'static str,
+        Arc<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
+    >,
+}
+
+impl DefaultConfig {
+    pub fn new() -> Self {
+        DefaultConfig {
+            worktree_root: None,
+            tests: construct_default_lint_tests_map(50),
+        }
+    }
+}
+
+impl base::document::lints::LintConfig for DefaultConfig {
+    fn worktree_root(&self) -> Option<PathBuf> {
+        self.worktree_root.clone()
+    }
+    fn get_test(&self, code: &str) -> Option<&Arc<base::document::lints::LintFn>> {
+        self.tests.get(code)
+    }
+}
+impl base::config::Config for DefaultConfig {}
 
 fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     // TODO: accept (-h|--help) and (-v|--version) flags

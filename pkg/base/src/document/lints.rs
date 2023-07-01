@@ -242,9 +242,7 @@ fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
     lints
 }
 
-pub(crate) fn construct_default_lint_tests_map(
-    cutoff: u8,
-) -> HashMap<&'static str, Arc<LintFn<'static>>> {
+pub fn construct_default_lint_tests_map(cutoff: u8) -> HashMap<&'static str, Arc<LintFn<'static>>> {
     // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Box`ed fns
     let mut h: HashMap<&str, Arc<LintFn>> = HashMap::with_capacity(2);
     macro_rules! insert {
