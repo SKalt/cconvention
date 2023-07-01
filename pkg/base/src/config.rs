@@ -9,13 +9,31 @@ use crate::{
         lints::{construct_default_lint_tests_map, LintConfig, LintFn},
         GitCommitDocument,
     },
-    git::{get_worktree_root, git, to_path},
+    git::git,
 };
 
 lazy_static! {
     static ref RE: Regex =
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
+
+pub const DEFAULT_TYPES: &[(&str, &str)] = &[
+    ("feat", "adds a new feature"),
+    ("fix", "fixes a bug"),
+    ("docs", "changes only the documentation"),
+    (
+        "style",
+        "changes the style but not the meaning of the code (such as formatting)",
+    ),
+    ("perf", "improves performance"),
+    ("test", "adds or corrects tests"),
+    ("build", "changes the build system or external dependencies"),
+    ("chore", "changes outside the code, docs, or tests"),
+    ("ci", "changes to the Continuous Integration (CI) system"),
+    ("refactor", "changes the code without changing behavior"),
+    ("revert", "reverts prior changes"),
+];
+
 pub trait Config: LintConfig {
     /// the source of the configuration
     fn source(&self) -> &str;
@@ -28,13 +46,13 @@ pub trait Config: LintConfig {
         }
         result
     }
-    fn scope_suggestions(&mut self, worktree_root: Option<PathBuf>) -> Vec<(String, String)> {
+    fn scope_suggestions(&self, worktree_root: Option<PathBuf>) -> Vec<(String, String)> {
         // guess the scopes from the staged files
         let staged_files: Vec<String> = git(
-            &["--no-pager", "diff", "--name-only", "--cached"],
+            &["diff", "--name-only", "--cached"],
             worktree_root.clone(),
         )
-        .unwrap_or("".into())
+        .unwrap_or("".into()) // fail silently, returning an empty string if git fails
         .lines()
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
@@ -90,22 +108,6 @@ pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::Comple
     result
 }
 
-pub const DEFAULT_TYPES: &[(&str, &str)] = &[
-    ("feat", "adds a new feature"),
-    ("fix", "fixes a bug"),
-    ("docs", "changes only the documentation"),
-    (
-        "style",
-        "changes the style but not the meaning of the code (such as formatting)",
-    ),
-    ("perf", "improves performance"),
-    ("test", "adds or corrects tests"),
-    ("build", "changes the build system or external dependencies"),
-    ("chore", "changes outside the code, docs, or tests"),
-    ("ci", "changes to the Continuous Integration (CI) system"),
-    ("refactor", "changes the code without changing behavior"),
-    ("revert", "reverts prior changes"),
-];
 // TODO: disabling tracing, error reporting
 pub struct DefaultConfig {
     tests: HashMap<
@@ -113,6 +115,7 @@ pub struct DefaultConfig {
         Box<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
     >,
 }
+
 impl DefaultConfig {
     pub fn new() -> Self {
         DefaultConfig {
