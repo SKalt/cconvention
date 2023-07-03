@@ -8,12 +8,12 @@ pub const LINT_PROVIDER: &str = "git conventional commit language server";
 pub const INVALID: &str = "INVALID";
 /// https://commitlint.js.org/#/reference-rules?id=header-length
 /// note that the header is the first non-comment, non-blank line
-pub const BODY_LEADING_BLANK: &str = "body-leading-blank";
-pub const FOOTER_LEADING_BLANK: &str = "footer-leading-blank";
-pub const HEADER_MAX_LENGTH: &str = "header-max-length";
-pub const SCOPE_EMPTY: &str = "scope-empty";
-pub const SUBJECT_EMPTY: &str = "subject-empty";
-pub const SUBJECT_LEADING_SPACE: &str = "subject-leading-space";
+pub const BODY_LEADING_BLANK: &str = "body_leading_blank";
+pub const FOOTER_LEADING_BLANK: &str = "footer_leading_blank";
+pub const HEADER_MAX_LENGTH: &str = "header_max_length";
+pub const SCOPE_EMPTY: &str = "scope_empty";
+pub const SUBJECT_EMPTY: &str = "subject_empty";
+pub const SUBJECT_LEADING_SPACE: &str = "missing_subject_leading_space";
 use crate::LANGUAGE;
 
 const DEFAULT_LINTS: &[&str] = &[
