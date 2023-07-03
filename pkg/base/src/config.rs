@@ -1,36 +1,36 @@
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-
 /// use this for reading configuration from the environment
 pub const ENV_PREFIX: &str = "GIT_CC_LS";
 
-use crate::document::{
-    lints::{construct_default_lint_tests_map, LintConfig, LintFn},
-    GitCommitDocument,
-};
+use crate::document::lints::LintConfig;
 use crate::git;
+
+pub const DEFAULT_TYPES: &[(&str, &str)] = &[
+    ("feat", "Adds a new feature."),
+    ("fix", "Fixes a bug."),
+    ("docs", "Changes only the documentation."),
+    (
+        "style",
+        "Changes the style but not the meaning of the code (such as formatting).",
+    ),
+    ("perf", "Improves performance."),
+    ("test", "Adds or corrects tests."),
+    (
+        "build",
+        "Changes the build system or external dependencies.",
+    ),
+    ("chore", "Changes outside the code, docs, or tests."),
+    ("ci", "Changes to the Continuous Integration (CI) system."),
+    ("refactor", "Changes the code without changing behavior."),
+    ("revert", "Reverts prior changes."),
+    ("temp", "A commit to be fixed/rebased later."),
+];
 
 lazy_static! {
     static ref RE: Regex =
         Regex::new(r"^(?P<type>[^:\(!]+)(?:\((?P<scope>[^\)]+)\))?:\s*(?P<subject>.+)$").unwrap();
 }
-
-pub const DEFAULT_TYPES: &[(&str, &str)] = &[
-    ("feat", "adds a new feature"),
-    ("fix", "fixes a bug"),
-    ("docs", "changes only the documentation"),
-    (
-        "style",
-        "changes the style but not the meaning of the code (such as formatting)",
-    ),
-    ("perf", "improves performance"),
-    ("test", "adds or corrects tests"),
-    ("build", "changes the build system or external dependencies"),
-    ("chore", "changes outside the code, docs, or tests"),
-    ("ci", "changes to the Continuous Integration (CI) system"),
-    ("refactor", "changes the code without changing behavior"),
-    ("revert", "reverts prior changes"),
-];
 
 /// provides
 pub trait Config: LintConfig {
