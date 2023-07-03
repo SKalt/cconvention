@@ -96,7 +96,10 @@ pub(crate) fn as_completion(items: &[(String, String)]) -> Vec<lsp_types::Comple
 }
 
 pub trait ConfigStore {
-    fn get(&mut self, worktree_root: Option<PathBuf>) -> Arc<dyn Config>;
+    fn get(
+        &mut self,
+        worktree_root: Option<PathBuf>,
+    ) -> Result<Arc<dyn Config>, Box<dyn std::error::Error + Send + Sync>>;
     // self has to ^ be mutable because we might need to update the cache of configurations
 }
 

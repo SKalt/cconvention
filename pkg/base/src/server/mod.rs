@@ -272,7 +272,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             .with_url(&uri);
         self.commits.insert(uri.clone(), doc);
         let commit = self.commits.get(&uri).unwrap();
-        let cfg = self.config.get(commit.worktree_root.clone());
+        let cfg = self.config.get(commit.worktree_root.clone())?;
         self.publish_diagnostics(uri, cfg.lint(commit));
         Ok(ServerLoopAction::Continue)
     }
@@ -303,7 +303,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                 .get_mut(&uri)
                 .ok_or(format!("No document {uri}"))?;
             commit.edit(&params.content_changes);
-            self.config.get(commit.worktree_root.clone()).lint(commit)
+            self.config.get(commit.worktree_root.clone())?.lint(commit)
         };
         self.publish_diagnostics(uri, diagnostics);
         Ok(ServerLoopAction::Continue)
@@ -318,7 +318,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             let commit = self.commits.get_mut(&uri).unwrap();
             log_debug!("refreshing syntax tree");
             commit.set_text(text);
-            let diagnostics = self.config.get(commit.worktree_root.clone()).lint(&commit);
+            let diagnostics = self.config.get(commit.worktree_root.clone())?.lint(&commit);
             self.publish_diagnostics(uri.clone(), diagnostics);
         }
         Ok(ServerLoopAction::Continue)
@@ -437,14 +437,14 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                     result.extend(config::as_completion(
                         &self
                             .config
-                            .get(commit.worktree_root.clone())
+                            .get(commit.worktree_root.clone())?
                             .type_suggestions(),
                     ));
                 } else if character_index <= scope_len + type_len {
                     result.extend(config::as_completion(
                         &mut self
                             .config
-                            .get(commit.worktree_root.clone())
+                            .get(commit.worktree_root.clone())?
                             .scope_suggestions(),
                     ));
                     if let Some(first) = result.first_mut() {
@@ -568,7 +568,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                 if _position.character <= _type_len as u32 {
                     if let Some((_, doc)) = self
                         .config
-                        .get(commit.worktree_root.clone())
+                        .get(commit.worktree_root.clone())?
                         .type_suggestions()
                         .iter()
                         .find(|(type_, _doc)| type_.as_str() == _type_text)

@@ -304,15 +304,17 @@ fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
     lints
 }
 
-pub fn construct_default_lint_tests_map(cutoff: u8) -> HashMap<&'static str, Arc<LintFn<'static>>> {
-    // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Box`ed fns
-    let mut h: HashMap<&str, Arc<LintFn>> = HashMap::with_capacity(2);
+pub fn construct_default_lint_tests_map(
+    cutoff: u16,
+) -> HashMap<&'static str, Arc<LintFn<'static>>> {
+    // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Arc`ed fns
+    let mut tests: HashMap<&str, Arc<LintFn>> = HashMap::with_capacity(5);
     macro_rules! insert {
         ($id:ident, $f:ident) => {
-            h.insert($id, Arc::new(move |doc| $f(doc, $id)));
+            tests.insert($id, Arc::new(move |doc| $f(doc, $id)));
         };
     }
-    h.insert(
+    tests.insert(
         HEADER_MAX_LENGTH,
         Arc::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LENGTH, cutoff)),
     );
@@ -322,7 +324,7 @@ pub fn construct_default_lint_tests_map(cutoff: u8) -> HashMap<&'static str, Arc
     // insert!(SCOPE_EMPTY, check_scope_present);
     insert!(SUBJECT_EMPTY, check_subject_empty);
     insert!(SUBJECT_LEADING_SPACE, check_subject_leading_space);
-    h
+    tests
 }
 
 fn make_diagnostic(
