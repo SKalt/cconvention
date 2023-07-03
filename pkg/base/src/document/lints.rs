@@ -105,27 +105,66 @@ pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_
     lints
 }
 
-pub fn check_subject_line_length(
-    doc: &GitCommitDocument,
+fn check_line_length<F>(
+    line: &str,
+    line_number: u32,
     code: &str,
-    cutoff: u8,
-) -> Vec<lsp_types::Diagnostic> {
-    let mut lints = vec![];
+    cutoff: u16,
+    message: F,
+) -> Option<lsp_types::Diagnostic>
+where
+    F: Fn() -> String,
+{
     if cutoff == 0 {
-        return lints;
-    }
-    if let Some(subject) = &doc.subject {
-        let n_chars = subject.line.chars().count();
+        None
+    } else {
+        let n_chars = line.chars().count();
         if n_chars > cutoff as usize {
             let mut lint = make_line_diagnostic(
-                format!("Header line is longer than {cutoff} characters."),
-                subject.line_number as usize,
+                message(),
+                line_number as usize,
                 cutoff as u32,
                 n_chars as u32,
             );
             lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-            lints.push(lint)
+            Some(lint)
+        } else {
+            None
         }
+    }
+        }
+pub fn check_subject_line_length(
+    doc: &GitCommitDocument,
+    code: &str,
+    cutoff: u16,
+) -> Vec<lsp_types::Diagnostic> {
+    let mut lints = vec![];
+    if let Some(subject) = &doc.subject {
+        lints.extend(check_line_length(
+            &subject.line,
+            subject.line_number as u32,
+            code,
+            cutoff,
+            || format!("Subject line too long (max {cutoff} chars)"),
+        ));
+    }
+    lints
+}
+
+pub fn check_body_line_length(
+    doc: &GitCommitDocument,
+    code: &str,
+    cutoff: u16,
+) -> Vec<lsp_types::Diagnostic> {
+    let mut lints = vec![];
+    for (line_number, line) in doc.get_body() {
+        lints.extend(check_line_length(
+            &line.to_string(),
+            line_number as u32,
+            code,
+            cutoff,
+            || format!("Body line too long (max {cutoff} chars)"),
+        ));
     }
     lints
 }
