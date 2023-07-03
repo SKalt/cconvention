@@ -132,7 +132,7 @@ where
             None
         }
     }
-        }
+}
 pub fn check_subject_line_length(
     doc: &GitCommitDocument,
     code: &str,
@@ -221,8 +221,8 @@ fn query_lint(
                 lints.push(lint);
             } else if name == "required" {
                 required_missing = false;
+            }
         }
-    }
     }
 
     if required_missing {
@@ -262,6 +262,38 @@ fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
         }
     }
     lints
+}
+
+fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Option<lsp_types::Diagnostic> {
+    doc.subject
+        .as_ref()
+        .map(|header| {
+            let type_text = header.type_text();
+            if crate::config::DEFAULT_TYPES
+                .iter()
+                .any(|(t, _)| t == &type_text)
+            {
+                let mut lint = make_line_diagnostic(
+                    format!(
+                        "Type {:?} is not in ({}).",
+                        type_text,
+                        crate::config::DEFAULT_TYPES
+                            .iter()
+                            .map(|(t, _)| *t)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    header.line_number as usize,
+                    0,
+                    type_text.chars().count() as u32,
+                );
+                lint.code = Some(lsp_types::NumberOrString::String(code.into()));
+                Some(lint)
+            } else {
+                None
+            }
+        })
+        .flatten()
 }
 
 fn check_subject_leading_space(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
