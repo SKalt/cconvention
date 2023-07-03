@@ -76,6 +76,7 @@ version = "0.1.0"
 dependencies = [
  "atty",
  "crop",
+ "indexmap 2.0.0",
  "lazy_static",
  "lsp-server",
  "lsp-types",
@@ -172,6 +173,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
 ]
 
 [[package]]

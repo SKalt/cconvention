@@ -20,10 +20,13 @@ impl DefaultConfigStore {
     }
 }
 impl base::config::ConfigStore for DefaultConfigStore {
-    fn get(&mut self, worktree_root: Option<PathBuf>) -> Arc<dyn base::config::Config> {
+    fn get(
+        &mut self,
+        worktree_root: Option<PathBuf>,
+    ) -> Result<Arc<dyn base::config::Config>, Box<dyn std::error::Error + Send + Sync>> {
         let mut cfg = self.0.clone();
         cfg.worktree_root = worktree_root;
-        Arc::new(cfg)
+        Ok(Arc::new(cfg))
     }
 }
 
@@ -98,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     } else {
         None
     };
-    let cfg = base::config::DefaultConfigStore::new();
+    let cfg = DefaultConfigStore::new();
     base::server::Server::from_stdio(cfg)
         .init(&base::server::CAPABILITIES)?
         .serve()?;

@@ -34,5 +34,5 @@ pub mod syntax_token_scopes; // for convenience
 extern crate serde_json;
 
 lazy_static! {
-    static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
+    pub static ref LANGUAGE: tree_sitter::Language = tree_sitter_gitcommit::language();
 }
