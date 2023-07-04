@@ -20,6 +20,7 @@ impl DefaultConfigStore {
     }
 }
 impl base::config::ConfigStore for DefaultConfigStore {
+    /// always returns a clone of the same DefaultConfig for each worktree_root
     fn get(
         &mut self,
         worktree_root: Option<PathBuf>,

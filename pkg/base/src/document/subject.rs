@@ -265,10 +265,10 @@ impl Subject {
             offsets,
         }
     }
-    pub(crate) fn type_text(&self) -> &str {
+    pub fn type_text(&self) -> &str {
         &self.line[self.offsets.type_byte_range()]
     }
-    pub(crate) fn scope_text(&self) -> &str {
+    pub fn scope_text(&self) -> &str {
         &self.line[self.offsets.scope_byte_range()]
     }
     pub(crate) fn rest_text(&self) -> &str {

@@ -10,30 +10,32 @@ pub const INVALID: &str = "INVALID";
 /// note that the header is the first non-comment, non-blank line
 pub const BODY_LEADING_BLANK: &str = "body_leading_blank";
 pub const FOOTER_LEADING_BLANK: &str = "footer_leading_blank";
-pub const HEADER_MAX_LENGTH: &str = "header_max_length";
+pub const HEADER_MAX_LINE_LENGTH: &str = "header_max_line_length";
+pub const BODY_MAX_LINE_LENGTH: &str = "body_max_line_length";
 pub const SCOPE_EMPTY: &str = "scope_empty";
 pub const SUBJECT_EMPTY: &str = "subject_empty";
 pub const SUBJECT_LEADING_SPACE: &str = "missing_subject_leading_space";
+pub const TYPE_ENUM: &str = "type_enum";
 use crate::LANGUAGE;
 
-const DEFAULT_LINTS: &[&str] = &[
+pub const DEFAULT_LINTS: &[&str] = &[
+    TYPE_ENUM,
     BODY_LEADING_BLANK,
     FOOTER_LEADING_BLANK,
-    HEADER_MAX_LENGTH,
-    // SCOPE_EMPTY,
+    HEADER_MAX_LINE_LENGTH,
     SUBJECT_EMPTY,
     SUBJECT_LEADING_SPACE,
 ];
 const DEFAULT_MAX_LINE_LENGTH: u8 = 50; // from https://git-scm.com/docs/git-commit#_discussion
 
 lazy_static! {
-    pub static ref DEFAULT_LINT_CODES: HashMap<&'static str, lsp_types::DiagnosticSeverity> = {
+    pub static ref DEFAULT_LINT_SEVERITY: HashMap<&'static str, lsp_types::DiagnosticSeverity> = {
         use lsp_types::DiagnosticSeverity as Severity;
         HashMap::from([
             // rule of thumb: if it's in the spec and we can't auto-fix it, it's an error
             // else, it's a warning
             (INVALID, Severity::ERROR),
-            (HEADER_MAX_LENGTH, Severity::WARNING), // not in the spec
+            (HEADER_MAX_LINE_LENGTH, Severity::WARNING), // not in the spec
             (BODY_LEADING_BLANK, Severity::WARNING), // fixable
             (FOOTER_LEADING_BLANK, Severity::WARNING), // fixable
             (SUBJECT_LEADING_SPACE, Severity::WARNING), // fixable
@@ -46,13 +48,7 @@ lazy_static! {
         *LANGUAGE,
         include_str!("./queries/bad_trailer.scm"),
     ).unwrap();
-
-    // static ref Thing: HashMap<&'static str, Arc<dyn Fn()>> = HashMap::new();
 }
-
-// IDEA: curry LintFns (code)(severity)(doc) -> Vec<_>
-// currying would keep the final signature stable (doc) -> Vec<lint>
-// while allowing for additional config
 
 /// a lint-fn is a test that can return zero to many logically equivalent diagnostics
 /// differentiated by a message: e.g. `[line-too-long, line-too-short]`
@@ -170,7 +166,10 @@ pub fn check_body_line_length(
 }
 
 /// Check that there's at least one leading blank before the trailers
-fn check_footer_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
+pub fn check_footer_leading_blank(
+    doc: &GitCommitDocument,
+    code: &str,
+) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     if let Some(missing_line) = doc.get_missing_trailer_padding_line() {
         // code,
@@ -295,7 +294,10 @@ fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Option<lsp_types::Dia
         .flatten()
 }
 
-fn check_subject_leading_space(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
+pub fn check_subject_leading_space(
+    doc: &GitCommitDocument,
+    code: &str,
+) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     if let Some(subject) = &doc.subject {
         let message = subject.message_text();
@@ -316,7 +318,7 @@ fn check_subject_leading_space(doc: &GitCommitDocument, code: &str) -> Vec<lsp_t
     lints
 }
 
-fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
+pub fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     if let Some(subject) = &doc.subject {
         let message = subject.message_text();
@@ -346,8 +348,8 @@ pub fn construct_default_lint_tests_map(
         };
     }
     tests.insert(
-        HEADER_MAX_LENGTH,
-        Arc::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LENGTH, cutoff)),
+        HEADER_MAX_LINE_LENGTH,
+        Arc::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LINE_LENGTH, cutoff)),
     );
     insert!(BODY_LEADING_BLANK, check_body_leading_blank);
     insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
@@ -402,7 +404,7 @@ pub trait LintConfig {
         DEFAULT_LINTS
     }
     fn lint_severity(&self, lint_code: &str) -> &lsp_types::DiagnosticSeverity {
-        DEFAULT_LINT_CODES
+        DEFAULT_LINT_SEVERITY
             .get(lint_code)
             .unwrap_or(&lsp_types::DiagnosticSeverity::WARNING)
     }
