@@ -12,8 +12,27 @@
         "--disable-extensions",
         "${workspaceRoot}/examples"
       ],
-      "outFiles": ["${workspaceRoot}/client/dist/*.js"],
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      // "outFiles": ["${workspaceRoot}/client//dist/*.js"],
       "preLaunchTask": "Build Base Server and Extension"
+    },
+    {
+      "name": "Launch Pro Client",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceRoot}/editors/code/pro",
+        "--disable-extensions",
+        "${workspaceRoot}/examples"
+      ],
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      // "outFiles": ["${workspaceRoot}/client/dist/*.js"],
+      "preLaunchTask": "Build Pro Server and Extension"
     }
   ]
 }

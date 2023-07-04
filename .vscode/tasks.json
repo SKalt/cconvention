@@ -2,12 +2,12 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build Base Server",
       "type": "cargo",
       "command": "build",
       "problemMatcher": ["$rustc"],
       "group": "build",
-      "args": ["--package", "base", "--all-features"],
-      "label": "Build Base Server"
+      "args": ["--package", "base", "--all-features"]
     },
     {
       "label": "Build Base Extension in Background",
@@ -35,6 +35,42 @@
     {
       "label": "Build Base Server and Extension",
       "dependsOn": ["Build Base Server", "Build Base Extension"],
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "Build Pro Server",
+      "type": "cargo",
+      "command": "build",
+      "problemMatcher": ["$rustc"],
+      "group": "build",
+      "args": ["--package", "pro", "--all-features"]
+    },
+    {
+      "label": "Build Pro Extension in Background",
+      "group": "build",
+      "type": "npm",
+      "script": "watch",
+      "path": "editors/code/basic",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/pro"]
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Build Pro Extension",
+      "group": "build",
+      "type": "npm",
+      "script": "build",
+      "path": "editors/code/pro",
+      "problemMatcher": {
+        "base": "$tsc",
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
+      }
+    },
+    {
+      "label": "Build Pro Server and Extension",
+      "dependsOn": ["Build Pro Server", "Build Pro Extension"],
       "problemMatcher": "$rustc"
     }
   ]
