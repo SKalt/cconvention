@@ -15,18 +15,11 @@ use crate::{
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, "(subject) @subject",).unwrap();
-    // static ref BODY_QUERY: tree_sitter::Query =
-    //     tree_sitter::Query::new(LANGUAGE.clone(), "(body) @body",).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/subject.scm")).unwrap();
     static ref TRAILER_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, "(trailer) @trailer",).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/trailer.scm")).unwrap();
     static ref FILE_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, "(filepath) @text.uri",).unwrap();
-
-    // static ref MISSING_BODY_QUERY: tree_sitter::Query = tree_sitter::Query::new(
-    //     LANGUAGE.clone(),
-    //     "(message) @message",
-    // ).unwrap();
+        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/filepath.scm")).unwrap();
 }
 
 fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
