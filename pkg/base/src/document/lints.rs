@@ -409,8 +409,8 @@ pub trait LintConfig {
         "<default>"
     }
     fn worktree_root(&self) -> Option<PathBuf>;
-    fn enabled_lint_codes(&self) -> &[&str] {
-        DEFAULT_LINTS
+    fn enabled_lint_codes(&self) -> Vec<&str> {
+        Vec::from(DEFAULT_LINTS)
     }
     fn lint_severity(&self, lint_code: &str) -> &lsp_types::DiagnosticSeverity {
         DEFAULT_LINT_SEVERITY
