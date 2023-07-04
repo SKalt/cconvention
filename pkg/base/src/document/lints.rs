@@ -196,6 +196,9 @@ pub fn query_lint(
     let mut cursor = tree_sitter::QueryCursor::new();
     let names = query.capture_names();
     let mut required_missing: bool = names.iter().any(|name| name == "required");
+    if required_missing {
+        log_debug!("[{}] starting search for required capture", code);
+    }
     // let text = doc.code.to_string();
     let matches = cursor.matches(
         query,
@@ -218,12 +221,18 @@ pub fn query_lint(
                 lint.code = Some(lsp_types::NumberOrString::String(code.into()));
                 lints.push(lint);
             } else if name == "required" {
+                log_debug!(
+                    "[{}] found required capture at {:?}",
+                    code,
+                    c.node.start_position()
+                );
                 required_missing = false;
             }
         }
     }
 
     if required_missing {
+        log_debug!("[{}] required capture not found, adding diagnostic", code);
         let mut lint = make_diagnostic(0, 0, 0, 0, message.to_string());
         lint.code = Some(lsp_types::NumberOrString::String(code.into()));
         lints.push(lint);
