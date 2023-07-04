@@ -36,11 +36,10 @@ pub(crate) fn handle_all_tokens(
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
     let mut cursor = tree_sitter::QueryCursor::new();
-    let code = doc.code.to_string();
     let matches = cursor.matches(
         &HIGHLIGHTS_QUERY,
         doc.syntax_tree.root_node(),
-        code.as_bytes(),
+        |node: tree_sitter::Node<'_>| doc.slice_of(node).chunks().map(|s| s.as_bytes()),
     );
     // TODO: use subject line tokenization from `doc.subject.unwrap()`
     let names = HIGHLIGHTS_QUERY.capture_names();

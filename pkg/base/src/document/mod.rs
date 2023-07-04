@@ -171,10 +171,13 @@ impl GitCommitDocument {
             .skip(subject_line_number.into())
             .filter(|(_, line)| line.bytes().next() != Some(b'#'));
     }
+    pub(crate) fn slice_of(&self, node: tree_sitter::Node) -> crop::RopeSlice {
+        self.code.byte_slice(node.byte_range())
+    }
     fn get_subject_line_with_number(&self) -> Option<(String, usize)> {
         if let Some(node) = self.get_ts_subject_line() {
             return Some((
-                node.utf8_text(self.code.to_string().as_bytes())
+                node.utf8_text(self.slice_of(node).to_string().as_bytes())
                     .unwrap()
                     .to_string(),
                 node.start_position().row,
@@ -188,11 +191,10 @@ impl GitCommitDocument {
     fn get_ts_subject_line(&self) -> Option<tree_sitter::Node> {
         let mut cursor = tree_sitter::QueryCursor::new();
         let names = SUBJECT_QUERY.capture_names();
-        let code = self.code.to_string();
         let matches = cursor.matches(
             &SUBJECT_QUERY,
             self.syntax_tree.root_node(),
-            code.as_bytes(),
+            |node: tree_sitter::Node<'_>| self.slice_of(node).chunks().map(|s| s.as_bytes()),
         );
         for m in matches {
             for c in m.captures {
@@ -213,11 +215,11 @@ impl GitCommitDocument {
     /// returns the 0-indexed line number of each trailer
     fn get_trailers_lines(&self) -> Vec<u32> {
         let mut cursor = tree_sitter::QueryCursor::new();
-        let code = self.code.to_string();
+
         let matches = cursor.matches(
             &TRAILER_QUERY,
             self.syntax_tree.root_node(),
-            code.as_bytes(),
+            |node: tree_sitter::Node<'_>| self.slice_of(node).chunks().map(|s| s.as_bytes()),
         );
         let mut line_numbers = vec![];
         for m in matches {
@@ -231,13 +233,17 @@ impl GitCommitDocument {
     }
     pub(crate) fn get_links(&self, repo_root: PathBuf) -> Vec<lsp_types::DocumentLink> {
         let mut cursor = tree_sitter::QueryCursor::new();
-        let code = self.code.to_string();
-        let matches = cursor.matches(&FILE_QUERY, self.syntax_tree.root_node(), code.as_bytes());
+        let matches = cursor.matches(
+            &FILE_QUERY,
+            self.syntax_tree.root_node(),
+            |node: tree_sitter::Node<'_>| self.slice_of(node).chunks().map(|s| s.as_bytes()),
+        );
         // let mut path = repo_root.clone();
         let mut result = vec![];
         for m in matches {
             for c in m.captures {
-                let text = c.node.utf8_text(code.as_bytes()).unwrap();
+                let _text = self.slice_of(c.node).to_string();
+                let text = c.node.utf8_text(_text.as_bytes()).unwrap();
                 let path = repo_root.join(text);
                 let range = c.node.range();
                 result.push(lsp_types::DocumentLink {

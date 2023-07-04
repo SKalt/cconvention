@@ -187,7 +187,7 @@ fn check_footer_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_ty
     lints
 }
 
-fn query_lint(
+pub fn query_lint(
     doc: &GitCommitDocument,
     query: &tree_sitter::Query,
     code: &str,
@@ -195,15 +195,14 @@ fn query_lint(
 ) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     let mut cursor = tree_sitter::QueryCursor::new();
-    // FIXME: don't re-allocate the entire document text
-    // let bytes = doc.code.chunks();
-    // let matches = cursor.matches(query, doc.syntax_tree.root_node(), move |node| {
-    //     bytes.into_iter().map(|chunk| chunk.as_bytes())
-    // });
     let names = query.capture_names();
     let mut required_missing: bool = names.iter().any(|name| name == "required");
-    let text = doc.code.to_string();
-    let matches = cursor.matches(query, doc.syntax_tree.root_node(), text.as_bytes());
+    // let text = doc.code.to_string();
+    let matches = cursor.matches(
+        query,
+        doc.syntax_tree.root_node(),
+        |node: tree_sitter::Node<'_>| doc.slice_of(node).chunks().map(|s| s.as_bytes()),
+    );
     for m in matches {
         for c in m.captures {
             let name = &names[c.index as usize];
