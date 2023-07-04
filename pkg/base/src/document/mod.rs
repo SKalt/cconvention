@@ -238,12 +238,10 @@ impl GitCommitDocument {
             self.syntax_tree.root_node(),
             |node: tree_sitter::Node<'_>| self.slice_of(node).chunks().map(|s| s.as_bytes()),
         );
-        // let mut path = repo_root.clone();
         let mut result = vec![];
         for m in matches {
             for c in m.captures {
-                let _text = self.slice_of(c.node).to_string();
-                let text = c.node.utf8_text(_text.as_bytes()).unwrap();
+                let text = self.slice_of(c.node).to_string();
                 let path = repo_root.join(text);
                 let range = c.node.range();
                 result.push(lsp_types::DocumentLink {
