@@ -53,7 +53,7 @@ pub fn get_worktree_root(
     }
     let canonicalize = |p: PathBuf| if p.is_relative() { path.join(p) } else { p };
     git(&["rev-parse", "--show-toplevel"], Some(path.clone()))
-        .map(|p| p.into())
+        .map(|p| p.trim().into())
         .map(canonicalize)
         .or_else(
             |err| -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
