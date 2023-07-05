@@ -3,6 +3,7 @@ use crate::{config, syntax_token_scopes};
 use crate::{config::Config, document::GitCommitDocument};
 use core::panic;
 use lsp_server::{self, Message, Notification, RequestId, Response};
+use lsp_types::notification::Notification as NotificationTrait;
 use lsp_types::{
     self, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
     DocumentOnTypeFormattingParams, HoverParams, InitializeResult, ServerInfo, Url,
@@ -230,7 +231,13 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         macro_rules! handle {
             ($method:ty => $handler:ident) => {
                 if let Ok(params) = get_notification_params::<$method>(&notification) {
-                    return Server::$handler(self, params);
+                    match Server::$handler(self, params) {
+                        Ok(action) => return Ok(action),
+                        Err(e) => {
+                            self.publish_error(e);
+                            return Ok(ServerLoopAction::Continue);
+                        }
+                    }
                 }
             };
         }
@@ -260,6 +267,21 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                 params: serde_json::to_value(params).unwrap(),
             }))
             .unwrap();
+    }
+    /// Send an error-message notification to the client.
+    fn publish_error(&self, err: Box<dyn std::error::Error + Send + Sync>) {
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#window_showMessageRequest
+        self.connection
+            .sender
+            .send(Message::Notification(lsp_server::Notification {
+                method: lsp_types::notification::ShowMessage::METHOD.to_owned(),
+                params: serde_json::to_value(lsp_types::ShowMessageParams {
+                    typ: lsp_types::MessageType::ERROR,
+                    message: err.to_string(),
+                })
+                .unwrap(),
+            }))
+            .unwrap()
     }
 
     fn handle_open(
@@ -347,8 +369,19 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         macro_rules! handle {
             ($method:ty => $handler:ident) => {
                 if let Ok(params) = get_request_params::<$method>(&request) {
-                    return Server::$handler(self, &request.id, params);
-                }
+                    return Ok(match Server::$handler(self, &request.id, params) {
+                        Ok(response) => response,
+                        Err(err) => Response {
+                            id: request.id,
+                            result: None,
+                            error: Some(lsp_server::ResponseError {
+                                code: lsp_server::ErrorCode::RequestFailed as i32,
+                                message: err.to_string(),
+                                data: None,
+                            }),
+                        },
+                    });
+                };
             };
         }
         handle!(SemanticTokensFullRequest => handle_token_full);
