@@ -112,6 +112,6 @@ pub fn related_commits(staged_files: &[String], cwd: Option<PathBuf>) -> Vec<Str
         .lines()
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
-        .map(|s| s.to_owned()) // TODO: fewer allocations
+        .map(|s| s.to_owned())
         .collect()
 }

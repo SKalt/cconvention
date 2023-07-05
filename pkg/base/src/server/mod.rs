@@ -1,12 +1,15 @@
-use crate::config::ConfigStore;
-use crate::{config, syntax_token_scopes};
-use crate::{config::Config, document::GitCommitDocument};
+use crate::{
+    config::{self, ConfigStore},
+    document::GitCommitDocument,
+    git::to_path,
+    syntax_token_scopes,
+};
 use core::panic;
-use lsp_server::{self, Message, Notification, RequestId, Response};
+use lsp_server::{self, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::Notification as NotificationTrait;
 use lsp_types::{
     self, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
-    DocumentOnTypeFormattingParams, HoverParams, InitializeResult, ServerInfo, Url,
+    DocumentOnTypeFormattingParams, GlobPattern, HoverParams, InitializeResult, ServerInfo, Url,
 };
 use lsp_types::{DidChangeTextDocumentParams, ServerCapabilities};
 use std::collections::HashMap;
@@ -78,7 +81,7 @@ lazy_static! {
             // definition_provider: None,
             declaration_provider: None, // maybe later, for jumping to configuration
             execute_command_provider: None, // maybe later for executing code blocks
-            workspace: None,            // maybe later, for git history inspection
+            workspace: None,
             semantic_tokens_provider: Some(
                 // provides some syntax highlighting!
                 lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -247,8 +250,8 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         // WillSaveTextDocument
         handle!(DidCloseTextDocument => handle_close);
         handle!(DidSaveTextDocument => handle_save);
+        handle!(DidChangeWatchedFiles => handle_file_change);
         handle!(Exit => handle_exit);
-        // DidChangeWatchedFiles
         // WorkDoneProgressCancel
 
         Ok(ServerLoopAction::Continue)
@@ -284,6 +287,29 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             .unwrap()
     }
 
+    // TODO: remove; it's unused
+    pub fn watch_files(&self, files: Vec<GlobPattern>) {
+        // see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#didChangeWatchedFilesRegistrationOptions
+        self.connection
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(1), // TODO: use a real id
+                method:
+                    <lsp_types::request::RegisterCapability as lsp_types::request::Request>::METHOD
+                        .to_owned(),
+                params: serde_json::to_value(lsp_types::DidChangeWatchedFilesRegistrationOptions {
+                    watchers: files
+                        .iter()
+                        .map(|f| lsp_types::FileSystemWatcher {
+                            glob_pattern: f.to_owned(),
+                            kind: None,
+                        })
+                        .collect(),
+                })
+                .unwrap(),
+            }))
+            .unwrap() // FIXME: handle error
+    }
     fn handle_open(
         &mut self,
         params: DidOpenTextDocumentParams,
@@ -354,6 +380,29 @@ impl<Cfg: ConfigStore> Server<Cfg> {
     }
     fn handle_exit(&mut self, _: ()) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
         Ok(ServerLoopAction::Break)
+    }
+
+    fn handle_file_change(
+        &mut self,
+        params: lsp_types::DidChangeWatchedFilesParams,
+    ) -> Result<ServerLoopAction, Box<dyn Error + Send + Sync>> {
+        let mut paths = Vec::with_capacity(params.changes.len());
+        for change in params.changes {
+            paths.push(to_path(&change.uri)?);
+        }
+        for path in self.config.set_dirty(paths) {
+            // HACK: inefficient lookup of the commits associated with this config
+            // in practice, I'd only ever expect one commit to be associated with a server,
+            // so this shouldn't be a big deal.
+            for (url, commit) in self.commits.iter() {
+                if commit.worktree_root == Some(path.clone()) {
+                    let diagnostics = self.config.get(commit.worktree_root.clone())?.lint(commit);
+                    self.publish_diagnostics(url.clone(), diagnostics);
+                    break;
+                }
+            }
+        }
+        Ok(ServerLoopAction::Continue)
     }
 }
 
