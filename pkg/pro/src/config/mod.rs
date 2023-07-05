@@ -1,4 +1,3 @@
-use super::lints;
 use base::{
     document::{
         lints::{check_body_line_length, check_subject_line_length},
@@ -45,9 +44,21 @@ impl Default for Severity {
     }
 }
 
+lazy_static! {
+    pub(crate) static ref CONFIG_FILE_GLOB: String = {
+        let mut exts = vec!["json"];
+
+        #[cfg(feature = "toml_config")]
+        exts.push("toml");
+
+        format!("**/commit_convention.{}", exts.join(","))
+    };
+}
+
 #[derive(Default)]
 pub(crate) struct Config {
     worktree_root: PathBuf,
+    // TODO: source
     types: IndexMap<String, String>,
     scopes: IndexMap<String, String>,
     severity: HashMap<String, lsp_types::DiagnosticSeverity>,
@@ -285,7 +296,6 @@ impl Config {
         insert_severity!(lints::FOOTER_LEADING_BLANK, footer_leading_blank);
         insert_severity!(lints::SUBJECT_EMPTY, subject_empty);
         insert_severity!(lints::SUBJECT_LEADING_SPACE, missing_subject_leading_space);
-        log_debug!("enabled_lints: {:?}", cfg.enabled_lints);
 
         for (code, plugin) in json.plugins {
             {
@@ -321,6 +331,7 @@ impl Config {
             );
             cfg.enabled_lints.push(code);
         }
+        log_debug!("enabled_lints: {:?}", cfg.enabled_lints);
 
         Ok(cfg)
     }

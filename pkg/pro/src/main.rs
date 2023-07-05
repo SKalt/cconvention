@@ -4,9 +4,10 @@ extern crate lazy_static;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use atty::Stream;
-use base::{config::ENV_PREFIX, log_info};
+use base::{config::ENV_PREFIX, git::get_worktree_root, log_debug, log_info};
 mod config;
 mod lints;
+use lsp_types::GlobPattern;
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 
@@ -14,56 +15,40 @@ use base::server::Server;
 
 use crate::config::Config;
 
+fn construct_capabilities() -> lsp_types::ServerCapabilities {
+    let mut capabilities = base::server::CAPABILITIES.clone();
+    let filter = Some(lsp_types::FileOperationRegistrationOptions {
+        filters: vec![lsp_types::FileOperationFilter {
+            scheme: Some("file".to_string()),
+            pattern: lsp_types::FileOperationPattern {
+                matches: Some(lsp_types::FileOperationPatternKind::File),
+                options: Some(lsp_types::FileOperationPatternOptions {
+                    ignore_case: Some(false),
+                }),
+                glob: crate::config::CONFIG_FILE_GLOB.clone(), // ..Default::default()
+            },
+        }],
+    });
+    capabilities.workspace = Some(lsp_types::WorkspaceServerCapabilities {
+        workspace_folders: None,
+        file_operations: Some(lsp_types::WorkspaceFileOperationsServerCapabilities {
+            did_create: filter.clone(),
+            will_create: filter.clone(),
+            did_rename: filter.clone(),
+            will_rename: filter.clone(),
+            did_delete: filter.clone(),
+            will_delete: filter,
+        }),
+    });
+    capabilities
+}
+
 lazy_static! {
-    static ref CAPABILITIES: lsp_types::ServerCapabilities = {
-        let cap = base::server::CAPABILITIES.clone();
-        // TODO: increased capabilities?
-        cap
-    };
+    static ref CAPABILITIES: lsp_types::ServerCapabilities = construct_capabilities();
 }
 
 #[cfg(feature = "telemetry")]
 const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
-
-// now more on/off linting configuration
-// IDEA: plugin system based on tree-sitter + counts of matches
-// IDEA: Lint = Fn(&GitCommitDocument, code: &str, severity: &lsp_types::DiagnosticSeverity) -> Option<lsp_types::Diagnostic>
-// https://commitlint.js.org/#/reference-rules
-// 1234  1: already implemented; 2: neat 3: silly; 4: configurability: s=str, i=u8, b=bool
-// 1  b body-leading-blank
-// 1  b footer-leading-blank
-// 1  b footer-empty
-// 1  b scope-empty
-// 1  b type-empty
-// 1  b subject-empty
-// 1  u header-max-length
-// 1  u body-max-line-length
-// 1  V type-enum
-// 1  V scope-enum
-// 1  b signed-off-by
-// 1  b body-empty
-
-//  2 b references-empty *********
-//  2 V trailer-exists ***********
-
-//  2 u body-min-length
-//  2 u footer-min-length
-//  2 s scope-case
-//  2 u subject-min-length
-//  2 s type-case
-//    u body-max-length
-//    u footer-max-line-length
-//    u header-min-length
-//    u scope-max-length ~~~~~~~~
-//    u scope-min-length
-//    s subject-case
-//    u subject-max-length
-//    u type-max-length
-//    u type-min-length
-//   3s header-case
-//   3b header-full-stop
-//   3b subject-exclamation-mark
-//   3b subject-full-stop
 
 struct ConfigStore_ {
     dirs: HashMap<PathBuf, Arc<dyn base::config::Config>>,
@@ -95,6 +80,47 @@ impl base::config::ConfigStore for ConfigStore_ {
             self.dirs.insert(worktree_root, cfg.clone());
             Ok(cfg)
         }
+    }
+    fn set_dirty(&mut self, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+        let mut roots = Vec::with_capacity(paths.len());
+        for path in paths {
+            // since we're looking in ${root}/.config/ and ${root}, grab the parent and grandparent dirs
+            // shouldn't panic even if the repo root is located in /
+            let worktree_root = path
+                .parent()
+                .map(|parent| {
+                    let parent: PathBuf = parent.into();
+                    if self.dirs.contains_key(&parent) {
+                        Some(parent)
+                    } else {
+                        if let Some(grandparent) = parent.parent() {
+                            let grandparent: PathBuf = grandparent.into();
+                            if self.dirs.contains_key(&grandparent) {
+                                Some(grandparent)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                })
+                .flatten();
+            if let Some(worktree_root) = worktree_root {
+                log_debug!(
+                    "invalidating config cache for {:?} with worktree root {:?}",
+                    path,
+                    worktree_root
+                );
+                if let Ok(cfg) = Config::new(&worktree_root) {
+                    self.dirs.insert(worktree_root.clone(), Arc::new(cfg));
+                } else {
+                    self.dirs.remove(&worktree_root); // handle error on next access
+                }
+                roots.push(worktree_root);
+            }
+        }
+        roots
     }
 }
 
@@ -145,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         ));
     }
     Server::from_stdio(config_store)
-        .init(&base::server::CAPABILITIES)?
+        .init(&CAPABILITIES)?
         .serve()?;
     log_info!("done");
     Ok(())

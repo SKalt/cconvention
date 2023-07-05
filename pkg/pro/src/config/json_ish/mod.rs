@@ -18,7 +18,7 @@ fn get_config_dir(
 }
 
 fn get_file(
-    config_dir: PathBuf,
+    config_dir: &PathBuf,
     ext: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
     let config_file = config_dir.join(format!("commit_convention.{ext}"));
@@ -65,31 +65,38 @@ pub(crate) struct JsonConfig {
     pub missing_body: Option<BuiltinRule>,
     pub subject_empty: Option<BuiltinRule>,
     pub missing_subject_leading_space: Option<BuiltinRule>,
-    // TODO: plugins
     #[serde(flatten)]
     pub plugins: IndexMap<String, Rule>,
 }
 
-pub(crate) fn get_config_file(
-    repo_root: &PathBuf,
-) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
-    let config_dir = get_config_dir(repo_root)?;
-    get_file(config_dir, "toml")
-    // TODO: chain searches for other locations/formats:
-    // .or_else(|| get_file(config_dir, "yaml"))
-    // .or_else(|| get_file(config_dir, "yml"))
-    // .or_else(|| get_file(config_dir, "json"))
-    // .or_else(|| get_file(repo_root, "toml"))
-    // .or_else(|| get_file(repo_root, "yaml"))
-    // .or_else(|| get_file(repo_root, "yml"))
-    // .or_else(|| get_file(repo_root, "json"))
+fn from_toml(
+    config_file: PathBuf,
+) -> Result<(JsonConfig, PathBuf), Box<dyn std::error::Error + Sync + Send>> {
+    let config_string = fs::read_to_string(&config_file)?;
+    let config = toml::from_str(&config_string)?;
+    Ok((config, config_file))
 }
 
-pub(super) fn get_config(
-    worktree_root: &PathBuf,
+fn from_json(
+    config_file: PathBuf,
 ) -> Result<(JsonConfig, PathBuf), Box<dyn std::error::Error + Sync + Send>> {
-    let config_file = get_config_file(worktree_root)?;
     let config_string = fs::read_to_string(&config_file)?;
-    let config: JsonConfig = toml::from_str(&config_string)?;
+    let config = serde_json::from_str(&config_string)?;
     Ok((config, config_file))
+}
+
+pub(crate) fn get_config(
+    repo_root: &PathBuf,
+) -> Result<(JsonConfig, PathBuf), Box<dyn std::error::Error + Sync + Send>> {
+    let config_dir = get_config_dir(repo_root)?;
+    // TODO: hide toml ops behind #[cfg(feature = "toml_config"))]
+    get_file(&config_dir, "toml").map(from_toml)
+    // TODO: support yaml
+    // .or_else(|| get_file(config_dir, "yaml"))
+    // .or_else(|| get_file(config_dir, "yml"))
+    .or_else(|_| get_file(&config_dir, "json").map(from_json))
+    .or_else(|_| get_file(repo_root, "toml").map(from_toml))
+    // .or_else(|| get_file(repo_root, "yaml"))
+    // .or_else(|| get_file(repo_root, "yml"))
+    .or_else(|_| get_file(repo_root, "json").map(from_json))?
 }
