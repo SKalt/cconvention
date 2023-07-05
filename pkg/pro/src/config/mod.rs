@@ -4,11 +4,16 @@ use base::{
         lints::{check_body_line_length, check_subject_line_length},
         GitCommitDocument,
     },
-    log_debug,
+    log_debug, LANGUAGE,
 };
 use indexmap::IndexMap;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{hash_map::OccupiedEntry, HashMap},
+    hash::Hash,
+    path::PathBuf,
+    sync::Arc,
+};
 mod git;
 // TODO: move json_ish behind a feature flag
 pub(crate) mod json_ish;
@@ -55,12 +60,10 @@ impl Config {
     /// Load a config from the given worktree directory, adding default types, lints, & lint severity.
     pub(crate) fn new(
         worktree_root: &PathBuf,
-        // query_cache: &mut HashMap<String, tree_sitter::Query>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         use base::document::lints;
         // IDEA: draw lint-fn closures from a long-lived default store
-        let (json, _file) = json_ish::get_config(worktree_root)?;
-        let jfc = json.clone();
+        let (json, file) = json_ish::get_config(worktree_root)?;
         let enabled_lints: Vec<String> = lints::DEFAULT_LINTS
             .iter()
             .chain(&["body_line_max_length"])
@@ -243,7 +246,7 @@ impl Config {
                     cfg.enabled_lints.push($code.to_string());
                     insert_builtin!($code => $f);
                 } else {
-                    log_debug!("not inserting optional builtin lint {:?} since it was {:?} in {:?}", $code, severity, _file);
+                    log_debug!("not inserting optional builtin lint {:?} since it was {:?} in {:?}", $code, severity, file);
                 }
             };
         }
@@ -282,8 +285,43 @@ impl Config {
         insert_severity!(lints::FOOTER_LEADING_BLANK, footer_leading_blank);
         insert_severity!(lints::SUBJECT_EMPTY, subject_empty);
         insert_severity!(lints::SUBJECT_LEADING_SPACE, missing_subject_leading_space);
-        // TODO: handle plugins
         log_debug!("enabled_lints: {:?}", cfg.enabled_lints);
+
+        for (code, plugin) in json.plugins {
+            {
+                // Note: attempts to use a cache of the compiled queries (a HashMap of query_text => Query)
+                //  failed because the Arc<Fn>'s lifetime kept capturing the HashMap's lifetime,
+                // requiring the HashMap to be borrowed for 'static.
+                // Instead of dealing with all that, always compile the query.
+                // TODO: display error messages to the user
+                let query = tree_sitter::Query::new(*LANGUAGE, &plugin.query).map_err(|e| {
+                    format!(
+                        "{:?} error compiling tree-sitter query `{}.query` @ {} line {} column {} : {:?}",
+                        e.kind,
+                        code,
+                        file.as_os_str().to_str().unwrap(),
+                        e.row,
+                        e.column,
+                        e.message
+                    )
+                })?;
+                let code = code.clone();
+                cfg.tests.insert(
+                    code.clone(),
+                    Arc::new(move |doc| {
+                        base::document::lints::query_lint(doc, &query, &code, &plugin.message)
+                    }),
+                );
+            }
+
+            let severity: Option<lsp_types::DiagnosticSeverity> = plugin.severity.into();
+            cfg.severity.insert(
+                code.clone(),
+                severity.unwrap_or(lsp_types::DiagnosticSeverity::ERROR),
+            );
+            cfg.enabled_lints.push(code);
+        }
+
         Ok(cfg)
     }
 }

@@ -1,5 +1,4 @@
 use super::Severity;
-use base::git::get_worktree_root;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
@@ -33,12 +32,13 @@ fn get_file(
     Ok(config_file)
 }
 
-#[derive(Deserialize)]
-struct Rule {
-    severity: Severity,
-    query: String,
-    description: String,
-    message: String,
+#[derive(Deserialize, Clone, Debug)]
+pub(crate) struct Rule {
+    pub severity: Severity,
+    pub query: String,
+    #[serde(alias = "description")]
+    pub _description: String, // <- not used except to enforce documentation of rules
+    pub message: String,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct BuiltinLengthRule {
@@ -66,6 +66,8 @@ pub(crate) struct JsonConfig {
     pub subject_empty: Option<BuiltinRule>,
     pub missing_subject_leading_space: Option<BuiltinRule>,
     // TODO: plugins
+    #[serde(flatten)]
+    pub plugins: IndexMap<String, Rule>,
 }
 
 pub(crate) fn get_config_file(
@@ -77,6 +79,9 @@ pub(crate) fn get_config_file(
     // .or_else(|| get_file(config_dir, "yaml"))
     // .or_else(|| get_file(config_dir, "yml"))
     // .or_else(|| get_file(config_dir, "json"))
+    // .or_else(|| get_file(repo_root, "toml"))
+    // .or_else(|| get_file(repo_root, "yaml"))
+    // .or_else(|| get_file(repo_root, "yml"))
     // .or_else(|| get_file(repo_root, "json"))
 }
 
