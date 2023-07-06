@@ -1,18 +1,13 @@
 use base::{
     document::{
-        lints::{check_body_line_length, check_subject_line_length},
+        linting::default::{check_body_line_length, check_subject_line_length},
         GitCommitDocument,
     },
     log_debug, LANGUAGE,
 };
 use indexmap::IndexMap;
 use serde::Deserialize;
-use std::{
-    collections::{hash_map::OccupiedEntry, HashMap},
-    hash::Hash,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 mod git;
 // TODO: move json_ish behind a feature flag
 pub(crate) mod json_ish;
@@ -72,10 +67,10 @@ impl Config {
     pub(crate) fn new(
         worktree_root: &PathBuf,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        use base::document::lints;
+        use base::document::linting;
         // IDEA: draw lint-fn closures from a long-lived default store
         let (json, file) = json_ish::get_config(worktree_root)?;
-        let enabled_lints: Vec<String> = lints::DEFAULT_LINTS
+        let enabled_lints: Vec<String> = linting::default::ENABLED_LINTS
             .iter()
             .chain(&["body_line_max_length"])
             .map(|lint_code| lint_code.to_string())
@@ -107,7 +102,7 @@ impl Config {
             tests: HashMap::new(),
         };
         cfg.severity.insert(
-            lints::TYPE_ENUM.to_string(),
+            linting::default::TYPE_ENUM.to_string(),
             if types_are_missing {
                 lsp_types::DiagnosticSeverity::HINT
             } else {
@@ -115,7 +110,7 @@ impl Config {
             },
         );
         cfg.tests.insert(
-            lints::TYPE_ENUM.to_string(),
+            linting::default::TYPE_ENUM.to_string(),
             Arc::new(move |doc: &GitCommitDocument| {
                 let mut lints = vec![];
                 doc.subject.as_ref().map(|header| {
@@ -185,7 +180,8 @@ impl Config {
                                             "scope_enum".to_string(),
                                         )),
                                         source: Some(
-                                            base::document::lints::LINT_PROVIDER.to_string(),
+                                            base::document::linting::default::LINT_PROVIDER
+                                                .to_string(),
                                         ),
                                         message: format!(
                                             "Scope {:?} is not in ({}).",
@@ -226,7 +222,7 @@ impl Config {
             };
         }
         handle_builtin_length_rule!(
-            lints::HEADER_MAX_LINE_LENGTH,
+            linting::default::HEADER_MAX_LINE_LENGTH,
             header_line_max_length,
             check_subject_line_length,
             50
@@ -261,10 +257,10 @@ impl Config {
                 }
             };
         }
-        insert_builtin!(lints::BODY_LEADING_BLANK => lints::check_body_leading_blank);
-        insert_builtin!(lints::FOOTER_LEADING_BLANK => lints::check_footer_leading_blank);
-        insert_builtin!(lints::SUBJECT_EMPTY => lints::check_subject_empty);
-        insert_builtin!(lints::SUBJECT_LEADING_SPACE => lints::check_subject_leading_space);
+        insert_builtin!(linting::default::BODY_LEADING_BLANK => linting::default::check_body_leading_blank);
+        insert_builtin!(linting::default::FOOTER_LEADING_BLANK => linting::default::check_footer_leading_blank);
+        insert_builtin!(linting::default::SUBJECT_EMPTY => linting::default::check_subject_empty);
+        insert_builtin!(linting::default::SUBJECT_LEADING_SPACE => linting::default::check_subject_leading_space);
         insert_optional_builtin!(
             signed_off_by,
             crate::lints::MISSING_DCO,
@@ -287,15 +283,21 @@ impl Config {
                         .map(|s| s.into())
                         .flatten()
                         .unwrap_or_else(|| {
-                            lints::DEFAULT_LINT_SEVERITY.get($code).unwrap().to_owned()
+                            linting::default::LINT_SEVERITY
+                                .get($code)
+                                .unwrap()
+                                .to_owned()
                         }),
                 );
             };
         }
-        insert_severity!(lints::BODY_LEADING_BLANK, body_leading_blank);
-        insert_severity!(lints::FOOTER_LEADING_BLANK, footer_leading_blank);
-        insert_severity!(lints::SUBJECT_EMPTY, subject_empty);
-        insert_severity!(lints::SUBJECT_LEADING_SPACE, missing_subject_leading_space);
+        insert_severity!(linting::default::BODY_LEADING_BLANK, body_leading_blank);
+        insert_severity!(linting::default::FOOTER_LEADING_BLANK, footer_leading_blank);
+        insert_severity!(linting::default::SUBJECT_EMPTY, subject_empty);
+        insert_severity!(
+            linting::default::SUBJECT_LEADING_SPACE,
+            missing_subject_leading_space
+        );
 
         for (code, plugin) in json.plugins {
             {
@@ -319,7 +321,12 @@ impl Config {
                 cfg.tests.insert(
                     code.clone(),
                     Arc::new(move |doc| {
-                        base::document::lints::query_lint(doc, &query, &code, &plugin.message)
+                        base::document::linting::utils::query_lint(
+                            doc,
+                            &query,
+                            &code,
+                            &plugin.message,
+                        )
                     }),
                 );
             }
@@ -337,7 +344,7 @@ impl Config {
     }
 }
 
-impl base::document::lints::LintConfig for Config {
+impl base::document::linting::LintConfig for Config {
     fn enabled_lint_codes(&self) -> Vec<&str> {
         self.enabled_lints.iter().map(|s| s.as_str()).collect()
     }
@@ -345,7 +352,7 @@ impl base::document::lints::LintConfig for Config {
         Some(self.worktree_root.clone())
     }
 
-    fn get_test(&self, code: &str) -> Option<&std::sync::Arc<base::document::lints::LintFn>> {
+    fn get_test(&self, code: &str) -> Option<&std::sync::Arc<base::document::linting::LintFn>> {
         self.tests.get(code)
     }
 }

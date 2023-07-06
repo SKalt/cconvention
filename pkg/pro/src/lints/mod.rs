@@ -10,10 +10,15 @@ lazy_static! {
 pub(crate) const MISSING_BODY: &str = "missing_body";
 pub(crate) const MISSING_DCO: &str = "missing_dco";
 pub(crate) fn missing_body(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
-    base::document::lints::query_lint(doc, &BODY_QUERY, code, "Missing required commit body.")
+    base::document::linting::utils::query_lint(
+        doc,
+        &BODY_QUERY,
+        code,
+        "Missing required commit body.",
+    )
 }
 pub(crate) fn missing_dco(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
-    base::document::lints::query_lint(
+    base::document::linting::utils::query_lint(
         doc,
         &DCO_QUERY,
         code,

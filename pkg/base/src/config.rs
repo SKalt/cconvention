@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 /// use this for reading configuration from the environment
 pub const ENV_PREFIX: &str = "GIT_CC_LS";
 
-use crate::document::lints::LintConfig;
+use crate::document::linting::LintConfig;
 use crate::git;
 
 pub const DEFAULT_TYPES: &[(&str, &str)] = &[

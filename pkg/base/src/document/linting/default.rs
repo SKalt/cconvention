@@ -1,11 +1,9 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::collections::HashMap;
 
-use super::GitCommitDocument;
+use super::{utils, GitCommitDocument, INVALID};
 
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
 // const lint codes
-/// a fatal parse error according to the conventional commit spec
-pub const INVALID: &str = "INVALID";
 /// https://commitlint.js.org/#/reference-rules?id=header-length
 /// note that the header is the first non-comment, non-blank line
 pub const BODY_LEADING_BLANK: &str = "body_leading_blank";
@@ -18,7 +16,7 @@ pub const SUBJECT_LEADING_SPACE: &str = "missing_subject_leading_space";
 pub const TYPE_ENUM: &str = "type_enum";
 use crate::LANGUAGE;
 
-pub const DEFAULT_LINTS: &[&str] = &[
+pub const ENABLED_LINTS: &[&str] = &[
     TYPE_ENUM,
     BODY_LEADING_BLANK,
     FOOTER_LEADING_BLANK,
@@ -26,10 +24,10 @@ pub const DEFAULT_LINTS: &[&str] = &[
     SUBJECT_EMPTY,
     SUBJECT_LEADING_SPACE,
 ];
-const DEFAULT_MAX_LINE_LENGTH: u8 = 50; // from https://git-scm.com/docs/git-commit#_discussion
+pub const MAX_HEADER_LINE_LENGTH: u8 = 50; // from https://git-scm.com/docs/git-commit#_discussion
 
 lazy_static! {
-    pub static ref DEFAULT_LINT_SEVERITY: HashMap<&'static str, lsp_types::DiagnosticSeverity> = {
+    pub static ref LINT_SEVERITY: HashMap<&'static str, lsp_types::DiagnosticSeverity> = {
         use lsp_types::DiagnosticSeverity as Severity;
         HashMap::from([
             // rule of thumb: if it's in the spec and we can't auto-fix it, it's an error
@@ -50,17 +48,13 @@ lazy_static! {
     ).unwrap();
 }
 
-/// a lint-fn is a test that can return zero to many logically equivalent diagnostics
-/// differentiated by a message: e.g. `[line-too-long, line-too-short]`
-pub type LintFn<'cfg> = dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'cfg;
-
 /// check there is exactly 1 line between the header and body
 pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     let mut body_lines = doc.get_body();
     if let Some((padding_line_number, next_line)) = body_lines.next() {
         if next_line.chars().next().is_some() {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "there should be a blank line between the subject and the body".into(),
                 padding_line_number,
                 0,
@@ -75,7 +69,7 @@ pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_
             for (line_number, line) in body_lines {
                 if line.chars().next().is_some() && line.chars().any(|c| !c.is_whitespace()) {
                     if n_blank_lines > 1 {
-                        let mut lint = make_diagnostic(
+                        let mut lint = utils::make_diagnostic(
                             padding_line_number,
                             0,
                             line_number,
@@ -116,7 +110,7 @@ where
     } else {
         let n_chars = line.chars().count();
         if n_chars > cutoff as usize {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 message(),
                 line_number as usize,
                 cutoff as u32,
@@ -174,7 +168,7 @@ pub fn check_footer_leading_blank(
     if let Some(missing_line) = doc.get_missing_trailer_padding_line() {
         // code,
         // severity.to_owned(),
-        let mut lint = make_line_diagnostic(
+        let mut lint = utils::make_line_diagnostic(
             "Missing blank line before trailers.".into(),
             missing_line,
             0,
@@ -186,64 +180,9 @@ pub fn check_footer_leading_blank(
     lints
 }
 
-pub fn query_lint(
-    doc: &GitCommitDocument,
-    query: &tree_sitter::Query,
-    code: &str,
-    message: &str,
-) -> Vec<lsp_types::Diagnostic> {
-    let mut lints = vec![];
-    let mut cursor = tree_sitter::QueryCursor::new();
-    let names = query.capture_names();
-    let mut required_missing: bool = names.iter().any(|name| name == "required");
-    if required_missing {
-        log_debug!("[{}] starting search for required capture", code);
-    }
-    // let text = doc.code.to_string();
-    let matches = cursor.matches(
-        query,
-        doc.syntax_tree.root_node(),
-        |node: tree_sitter::Node<'_>| doc.slice_of(node).chunks().map(|s| s.as_bytes()),
-    );
-    for m in matches {
-        for c in m.captures {
-            let name = &names[c.index as usize];
-            if name == "forbidden" {
-                let start = c.node.start_position();
-                let end = c.node.end_position();
-                let mut lint = make_diagnostic(
-                    start.row,
-                    start.column as u32,
-                    end.row,
-                    end.column as u32,
-                    message.to_string(),
-                );
-                lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-                lints.push(lint);
-            } else if name == "required" {
-                log_debug!(
-                    "[{}] found required capture at {:?}",
-                    code,
-                    c.node.start_position()
-                );
-                required_missing = false;
-            }
-        }
-    }
-
-    if required_missing {
-        log_debug!("[{}] required capture not found, adding diagnostic", code);
-        let mut lint = make_diagnostic(0, 0, 0, 0, message.to_string());
-        lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-        lints.push(lint);
-    }
-
-    lints
-}
-
 /// Check all trailers have both a key and a value
 pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
-    query_lint(
+    utils::query_lint(
         doc,
         &BAD_TRAILER_QUERY,
         "INVALID",
@@ -258,7 +197,7 @@ fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
         if len > 0 && len <= 2 {
             // 2 = just the open/close parens
             let type_end = subject.type_text().chars().count();
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "Missing scope".into(),
                 subject.line_number.into(),
                 type_end as u32,
@@ -276,11 +215,11 @@ fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Option<lsp_types::Dia
         .as_ref()
         .map(|header| {
             let type_text = header.type_text();
-            if crate::config::DEFAULT_TYPES
+            if !crate::config::DEFAULT_TYPES
                 .iter()
                 .any(|(t, _)| t == &type_text)
             {
-                let mut lint = make_line_diagnostic(
+                let mut lint = utils::make_line_diagnostic(
                     format!(
                         "Type {:?} is not in ({}).",
                         type_text,
@@ -313,7 +252,7 @@ pub fn check_subject_leading_space(
         let n_whitespace = message.chars().take_while(|c| c.is_whitespace()).count();
         if n_whitespace != 1 || !message.starts_with(' ') {
             let start = subject.prefix_text().chars().count() as u32;
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "message should start with 1 space".into(),
                 subject.line_number as usize,
                 start,
@@ -333,7 +272,7 @@ pub fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types
         let message = subject.message_text();
         if message.is_empty() || message.chars().all(|c| c.is_whitespace()) {
             let start = subject.prefix_text().chars().count();
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "empty subject message".into(),
                 subject.line_number as usize,
                 start as u32,
@@ -344,127 +283,4 @@ pub fn check_subject_empty(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types
         }
     }
     lints
-}
-
-pub fn construct_default_lint_tests_map(
-    cutoff: u16,
-) -> HashMap<&'static str, Arc<LintFn<'static>>> {
-    // I have to do this since HashMap::<K,V>::from<[(K, V)]> complains about `Arc`ed fns
-    let mut tests: HashMap<&str, Arc<LintFn>> = HashMap::with_capacity(5);
-    macro_rules! insert {
-        ($id:ident, $f:ident) => {
-            tests.insert($id, Arc::new(move |doc| $f(doc, $id)));
-        };
-    }
-    tests.insert(
-        HEADER_MAX_LINE_LENGTH,
-        Arc::new(move |doc| check_subject_line_length(doc, HEADER_MAX_LINE_LENGTH, cutoff)),
-    );
-    insert!(BODY_LEADING_BLANK, check_body_leading_blank);
-    insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
-    // TODO: check there's exactly `n` leading blank lines before trailers?
-    // insert!(SCOPE_EMPTY, check_scope_present);
-    insert!(SUBJECT_EMPTY, check_subject_empty);
-    insert!(SUBJECT_LEADING_SPACE, check_subject_leading_space);
-    tests
-}
-
-fn make_diagnostic(
-    start_line: usize,
-    start_char: u32,
-    end_line: usize,
-    end_char: u32,
-    message: String,
-) -> lsp_types::Diagnostic {
-    lsp_types::Diagnostic {
-        source: Some(LINT_PROVIDER.to_string()),
-        range: lsp_types::Range {
-            start: lsp_types::Position {
-                line: start_line as u32,
-                character: start_char,
-            },
-            end: lsp_types::Position {
-                line: end_line as u32,
-                character: end_char,
-            },
-        },
-        message,
-        ..Default::default()
-    }
-}
-
-/// make a diagnostic for a single line
-pub(crate) fn make_line_diagnostic(
-    message: String,
-    line_number: usize,
-    start: u32,
-    end: u32,
-) -> lsp_types::Diagnostic {
-    make_diagnostic(line_number, start, line_number, end, message)
-}
-
-pub trait LintConfig {
-    /// provides information to the user about where the lint configuration came from.
-    fn source(&self) -> &str {
-        "<default>"
-    }
-    fn worktree_root(&self) -> Option<PathBuf>;
-    fn enabled_lint_codes(&self) -> Vec<&str> {
-        Vec::from(DEFAULT_LINTS)
-    }
-    fn lint_severity(&self, lint_code: &str) -> &lsp_types::DiagnosticSeverity {
-        DEFAULT_LINT_SEVERITY
-            .get(lint_code)
-            .unwrap_or(&lsp_types::DiagnosticSeverity::WARNING)
-    }
-
-    // fn lint_tests(&self) -> &HashMap<&str, Box<LintFn>>;
-    fn get_test(&self, code: &str) -> Option<&Arc<LintFn>>;
-    fn lint(&self, doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
-        let mut diagnostics = vec![];
-        diagnostics.extend(doc.get_mandatory_lints());
-        // let code_map = construct_default_lint_tests_map(self);
-        // for code in self.enabled_lint_codes() {}
-        diagnostics.extend(
-            self.enabled_lint_codes()
-                .iter()
-                .filter_map(|code| {
-                    self.get_test(code).or_else(|| {
-                        log_debug!("Missing test for code {:?}", code);
-                        None
-                    })
-                })
-                .map(|f| f(doc))
-                .map(|mut v| {
-                    for mut diagnostic in v.iter_mut() {
-                        if diagnostic.severity.is_none() {
-                            match &diagnostic.code {
-                                Some(lsp_types::NumberOrString::String(code)) => {
-                                    diagnostic.severity = Some(self.lint_severity(code).to_owned());
-                                }
-                                Some(bad_code) => {
-                                    panic!("Unsupported numeric code: {:?}", bad_code)
-                                }
-                                None => panic!("missing code"),
-                            }
-                        }
-                    }
-                    v
-                })
-                .reduce(|mut acc, red| {
-                    acc.extend(red);
-                    acc
-                })
-                .unwrap_or(vec![]),
-        );
-        diagnostics
-    }
-    /// 0 means no limit
-    fn max_subject_line_length(&self) -> u8 {
-        DEFAULT_MAX_LINE_LENGTH
-    }
-    // /// 0 means no limit
-    // fn max_body_line_length(&self) -> u8 {
-    //     0
-    // }
 }

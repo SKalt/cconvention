@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Write};
 
-use super::lints::{self, make_line_diagnostic};
+use super::linting::{self, utils};
 
 /// byte-offsets of ranges in a conventional commit header.
 #[derive(Debug, Default, Clone)]
@@ -310,13 +310,13 @@ impl Subject {
         // let mut lints = vec![];
         let type_text: &str = self.type_text();
         if type_text.chars().any(|c| c.is_whitespace()) {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "Type contains whitespace.".into(),
                 self.line_number as usize,
                 0,
                 type_text.chars().count() as u32,
             );
-            lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+            lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             Some(lint)
         } else {
@@ -332,30 +332,30 @@ impl Subject {
             return lints;
         }
         let start = self.type_text().chars().count();
-        let end = scope_text.chars().count() + start;
+        let end = start + scope_text.chars().count();
         if let Some(open) = scope_text.chars().next() {
             if open != '(' {
-                let mut lint = make_line_diagnostic(
+                let mut lint = utils::make_line_diagnostic(
                     "Scope should start with '('.".into(),
                     self.line_number as usize,
                     start.try_into().unwrap(),
                     (start + 1).try_into().unwrap(),
                 );
-                lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+                lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
                 // lsp_types::DiagnosticSeverity::ERROR,
                 lints.push(lint);
             }
         }
         if let Some(close) = scope_text.chars().last() {
             if close != ')' {
-                let mut lint = make_line_diagnostic(
+                let mut lint = utils::make_line_diagnostic(
                     "Scope should end with ')'".into(),
                     self.line_number as usize,
                     (end - 1).try_into().unwrap(),
                     end.try_into().unwrap(),
                     // config,
                 );
-                lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+                lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
                 lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
                 lints.push(lint);
             }
@@ -364,25 +364,25 @@ impl Subject {
             .chars()
             .any(|c| !c.is_whitespace() && c != '(' && c != ')')
         {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "Missing scope text.".into(),
                 self.line_number as usize,
                 start as u32,
                 end as u32,
             );
-            lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+            lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             lints.push(lint);
         }
         if scope_text.chars().any(|c| c.is_whitespace()) {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "Scope contains whitespace.".into(),
                 self.line_number as usize,
                 start.try_into().unwrap(),
                 end.try_into().unwrap(),
                 // config,
             );
-            lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+            lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             lints.push(lint);
         }
@@ -403,13 +403,13 @@ impl Subject {
             sorted.iter().collect()
         };
         if !illegal_chars.is_empty() {
-            let mut lint = lints::make_line_diagnostic(
+            let mut lint = linting::utils::make_line_diagnostic(
                 format!("illegal characters after type/scope: {:?}", illegal_chars),
                 self.line_number as usize,
                 start as u32,
                 end as u32,
             );
-            lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+            lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             Some(lint)
         } else {
@@ -422,14 +422,14 @@ impl Subject {
         let end = start + rest_text.chars().count();
 
         if rest_text.chars().last().map(|c| c != ':').unwrap_or(true) {
-            let mut lint = make_line_diagnostic(
+            let mut lint = utils::make_line_diagnostic(
                 "Missing colon.".into(),
                 self.line_number as usize,
                 end as u32,
                 end as u32,
             );
 
-            lint.code = Some(lsp_types::NumberOrString::String(lints::INVALID.into()));
+            lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
             lint.severity = Some(lsp_types::DiagnosticSeverity::ERROR);
             Some(lint)
         } else {

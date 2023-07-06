@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use atty::{self, Stream};
 use base::{
     config::ENV_PREFIX,
-    document::{lints::construct_default_lint_tests_map, GitCommitDocument},
+    document::{linting::utils::construct_default_lint_tests_map, GitCommitDocument},
     log_info,
 };
 
@@ -50,11 +50,11 @@ impl DefaultConfig {
     }
 }
 
-impl base::document::lints::LintConfig for DefaultConfig {
+impl base::document::linting::LintConfig for DefaultConfig {
     fn worktree_root(&self) -> Option<PathBuf> {
         self.worktree_root.clone()
     }
-    fn get_test(&self, code: &str) -> Option<&Arc<base::document::lints::LintFn>> {
+    fn get_test(&self, code: &str) -> Option<&Arc<base::document::linting::LintFn>> {
         self.tests.get(code)
     }
 }

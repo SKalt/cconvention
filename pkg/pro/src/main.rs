@@ -4,10 +4,10 @@ extern crate lazy_static;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use atty::Stream;
-use base::{config::ENV_PREFIX, git::get_worktree_root, log_debug, log_info};
+use base::{config::ENV_PREFIX, log_debug, log_info};
 mod config;
 mod lints;
-use lsp_types::GlobPattern;
+
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 

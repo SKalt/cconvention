@@ -1,4 +1,4 @@
-pub mod lints;
+pub mod linting;
 pub(crate) mod lookaround;
 pub(crate) mod subject;
 use std::path::PathBuf;
@@ -8,7 +8,7 @@ use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
 
 use crate::{
-    document::lints::INVALID,
+    document::linting::INVALID,
     git::{get_worktree_root, to_path},
     LANGUAGE,
 };
@@ -308,7 +308,7 @@ impl GitCommitDocument {
         if self.get_trailers_lines().is_empty() {
             return lints; // no trailers => no lints
         }
-        lints.extend(lints::check_trailer_values(self));
+        lints.extend(linting::default::check_trailer_values(self));
         lints.extend(self.check_trailer_arrangement());
         lints
     }
@@ -331,7 +331,7 @@ impl GitCommitDocument {
                         continue; // ignore empty lines
                     }
                     log_debug!("found body line after trailer: {}", body_line_number);
-                    let mut diagnostic = lints::make_line_diagnostic(
+                    let mut diagnostic = linting::utils::make_line_diagnostic(
                         "Message body after trailer.".into(),
                         body_line_number,
                         0,
