@@ -60,7 +60,7 @@ pub(crate) fn make_diagnostic(
 }
 
 /// make a diagnostic for a single line
-pub(crate) fn make_line_diagnostic(
+pub fn make_line_diagnostic(
     message: String,
     line_number: usize,
     start: u32,

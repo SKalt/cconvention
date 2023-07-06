@@ -191,27 +191,6 @@ pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Di
     )
 }
 
-// TODO: move to pro
-fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
-    let mut lints = vec![];
-    if let Some(subject) = &doc.subject {
-        let len = subject.scope_text().len();
-        if len > 0 && len <= 2 {
-            // 2 = just the open/close parens
-            let type_end = subject.type_text().chars().count();
-            let mut lint = utils::make_line_diagnostic(
-                "Missing scope".into(),
-                subject.line_number.into(),
-                type_end as u32,
-                type_end as u32,
-            );
-            lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-            lints.push(lint);
-        }
-    }
-    lints
-}
-
 pub(crate) fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     lints.extend(
