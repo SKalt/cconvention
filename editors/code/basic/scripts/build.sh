@@ -5,7 +5,7 @@
 set -euo pipefail
 pnpm i
 TARGET="${TARGET:-debug}" # TODO: use release build
-variant="base"
+variant="base_language_server"
 if [[ "${BASH_SOURCE[0]}" = */* ]]; then this_dir="${BASH_SOURCE[0]%/*}"; else this_dir=.; fi
 this_dir="$(cd "${this_dir}" && pwd)"
 repo_root="$(cd "${this_dir}/../../../.." && pwd)"
@@ -23,9 +23,9 @@ du -h ./dist/main.min.common.js*
 js-yaml ./src/tmLanguage.yaml >./src/tmLanguage.json
 
 cp "$repo_root/target/$TARGET/${variant}" ./dist/conventional-commit-language-server
-# vsix_target=./dist/git-conventional-commit-ls.vsix
+vsix_target=./dist/git-conventional-commit-ls.vsix
 # # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
-# vsce package -o $vsix_target --no-dependencies # since esbuild handles that!
+vsce package -o "$vsix_target" --no-dependencies # since esbuild handles that!
 
-# unzip -l $vsix_target
-# du -h $vsix_target
+unzip -l $vsix_target
+du -h $vsix_target

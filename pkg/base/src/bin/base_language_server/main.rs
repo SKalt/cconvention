@@ -1,8 +1,12 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+#[cfg(feature = "tracing")]
 use atty::{self, Stream};
+
+#[cfg(feature = "tracing")]
+use base::config::ENV_PREFIX;
+
 use base::{
-    config::ENV_PREFIX,
     document::{linting::utils::construct_default_lint_tests_map, GitCommitDocument},
     log_info,
 };

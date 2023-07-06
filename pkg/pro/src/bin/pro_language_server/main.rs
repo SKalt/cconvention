@@ -5,15 +5,13 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use atty::Stream;
 use base::{config::ENV_PREFIX, log_debug, log_info};
-mod config;
-mod lints;
 
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 
 use base::server::Server;
 
-use crate::config::Config;
+use pro::config::Config;
 
 fn construct_capabilities() -> lsp_types::ServerCapabilities {
     let mut capabilities = base::server::CAPABILITIES.clone();
@@ -25,7 +23,7 @@ fn construct_capabilities() -> lsp_types::ServerCapabilities {
                 options: Some(lsp_types::FileOperationPatternOptions {
                     ignore_case: Some(false),
                 }),
-                glob: crate::config::CONFIG_FILE_GLOB.clone(), // ..Default::default()
+                glob: CONFIG_FILE_GLOB.clone(), // ..Default::default()
             },
         }],
     });
@@ -45,6 +43,14 @@ fn construct_capabilities() -> lsp_types::ServerCapabilities {
 
 lazy_static! {
     static ref CAPABILITIES: lsp_types::ServerCapabilities = construct_capabilities();
+    static ref CONFIG_FILE_GLOB: String = {
+        let mut exts = vec!["json"];
+
+        #[cfg(feature = "toml_config")]
+        exts.push("toml");
+
+        format!("**/commit_convention.{}", exts.join(","))
+    };
 }
 
 #[cfg(feature = "telemetry")]
@@ -52,14 +58,18 @@ const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
 
 struct ConfigStore_ {
     dirs: HashMap<PathBuf, Arc<dyn base::config::Config>>,
+    #[cfg(feature = "tracing")]
     tracing_enabled: bool,
+    #[cfg(feature = "telemetry")]
     error_reporting_enabled: bool,
 }
 impl ConfigStore_ {
     fn new() -> Self {
         Self {
             dirs: HashMap::new(),
+            #[cfg(feature = "tracing")]
             tracing_enabled: std::env::var(format!("{ENV_PREFIX}_ENABLE_TRACING")).is_ok(),
+            #[cfg(feature = "telemetry")]
             error_reporting_enabled: std::env::var(format!("{ENV_PREFIX}_ENABLE_ERROR_REPORTING"))
                 .is_ok(),
         }

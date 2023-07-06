@@ -30,6 +30,7 @@ pub(crate) fn to_path(
             Ok(path) => Ok(path),
             Err(_) => Err(format!("bad host or file path: {url}").into()),
         },
+        #[allow(unused_variables)]
         other => {
             log_info!("unsupported scheme: {}", other);
             Err(format!("bad scheme: {}", url.scheme()).into())

@@ -371,6 +371,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         }
         Ok(ServerLoopAction::Continue)
     }
+    #[allow(unused_variables)]
     fn handle_config_change(
         &mut self,
         params: lsp_types::DidChangeConfigurationParams,

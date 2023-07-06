@@ -11,7 +11,6 @@ use base::{
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-mod git;
 // TODO: move json_ish behind a feature flag
 pub(crate) mod json_ish;
 
@@ -42,19 +41,8 @@ impl Default for Severity {
     }
 }
 
-lazy_static! {
-    pub(crate) static ref CONFIG_FILE_GLOB: String = {
-        let mut exts = vec!["json"];
-
-        #[cfg(feature = "toml_config")]
-        exts.push("toml");
-
-        format!("**/commit_convention.{}", exts.join(","))
-    };
-}
-
 #[derive(Default)]
-pub(crate) struct Config {
+pub struct Config {
     worktree_root: PathBuf,
     // TODO: source
     types: IndexMap<String, String>,
@@ -70,9 +58,7 @@ const MAX_BODY_LINE_LENGTH: u16 = 100;
 
 impl Config {
     /// Load a config from the given worktree directory, adding default types, lints, & lint severity.
-    pub(crate) fn new(
-        worktree_root: &PathBuf,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn new(worktree_root: &PathBuf) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         use base::document::linting;
         // IDEA: draw lint-fn closures from a long-lived default store
         let (json, file) = json_ish::get_config(worktree_root)?;
