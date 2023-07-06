@@ -1,6 +1,9 @@
 use base::{
     document::{
-        linting::default::{check_body_line_length, check_subject_line_length},
+        linting::{
+            default::{check_body_line_length, check_subject_line_length},
+            utils::make_line_diagnostic,
+        },
         GitCommitDocument,
     },
     log_debug, LANGUAGE,
@@ -62,6 +65,9 @@ pub(crate) struct Config {
     tests: HashMap<String, Arc<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic>>>,
 }
 
+const SCOPE_ENUM: &str = "scope_enum";
+const MAX_BODY_LINE_LENGTH: u16 = 100;
+
 impl Config {
     /// Load a config from the given worktree directory, adding default types, lints, & lint severity.
     pub(crate) fn new(
@@ -116,18 +122,8 @@ impl Config {
                 doc.subject.as_ref().map(|header| {
                     let type_text = header.type_text();
                     if types.get(type_text).is_none() {
-                        lints.push(lsp_types::Diagnostic {
-                            range: lsp_types::Range {
-                                start: lsp_types::Position {
-                                    line: header.line_number as u32,
-                                    character: 0,
-                                },
-                                end: lsp_types::Position {
-                                    line: header.line_number as u32,
-                                    character: type_text.chars().count() as u32,
-                                },
-                            },
-                            message: format!(
+                        let mut lint = make_line_diagnostic(
+                            format!(
                                 "Type {:?} is not in ({}).",
                                 type_text,
                                 types
@@ -136,8 +132,14 @@ impl Config {
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             ),
-                            ..Default::default()
-                        });
+                            header.line_number as usize,
+                            0,
+                            type_text.chars().count() as u32,
+                        );
+                        lint.code = Some(lsp_types::NumberOrString::String(
+                            linting::default::TYPE_ENUM.to_string(),
+                        ));
+                        lints.push(lint);
                     }
                 });
                 lints
@@ -159,41 +161,30 @@ impl Config {
                         doc.subject
                             .as_ref()
                             .map(|header| {
-                                if scopes.contains_key(header.scope_text()) {
+                                let scope_text = header.scope_text();
+                                if scopes.contains_key(scope_text) {
                                     None
                                 } else {
                                     let start = header.type_text().chars().count();
-                                    Some(lsp_types::Diagnostic {
-                                        range: lsp_types::Range {
-                                            start: lsp_types::Position {
-                                                line: header.line_number as u32,
-                                                character: start as u32,
-                                            },
-                                            end: lsp_types::Position {
-                                                line: header.line_number as u32,
-                                                character: (start
-                                                    + header.scope_text().chars().count())
-                                                    as u32,
-                                            },
-                                        },
-                                        code: Some(lsp_types::NumberOrString::String(
-                                            "scope_enum".to_string(),
-                                        )),
-                                        source: Some(
-                                            base::document::linting::default::LINT_PROVIDER
-                                                .to_string(),
-                                        ),
-                                        message: format!(
+                                    let end = start + scope_text.chars().count();
+                                    let mut lint = make_line_diagnostic(
+                                        format!(
                                             "Scope {:?} is not in ({}).",
-                                            header.scope_text(),
+                                            scope_text,
                                             scopes
                                                 .keys()
                                                 .map(|t| t.to_owned())
                                                 .collect::<Vec<_>>()
                                                 .join(", ")
                                         ),
-                                        ..Default::default()
-                                    })
+                                        header.line_number as usize,
+                                        start as u32,
+                                        end as u32,
+                                    );
+                                    lint.code = Some(lsp_types::NumberOrString::String(
+                                        SCOPE_ENUM.to_string(),
+                                    ));
+                                    Some(lint)
                                 }
                             })
                             .flatten(),
@@ -204,7 +195,7 @@ impl Config {
         }
 
         macro_rules! handle_builtin_length_rule {
-            ($code:expr, $id:ident, $f:ident, $cutoff:literal) => {
+            ($code:expr, $id:ident, $f:ident, $cutoff:expr) => {
                 if let Some(rule) = &json.$id {
                     let code = $code;
                     let cutoff = rule.max_length.unwrap_or($cutoff);
@@ -225,16 +216,15 @@ impl Config {
             linting::default::HEADER_MAX_LINE_LENGTH,
             header_line_max_length,
             check_subject_line_length,
-            50
+            base::document::linting::default::MAX_HEADER_LINE_LENGTH as u16
         );
 
         handle_builtin_length_rule!(
             "body_line_max_length",
             body_line_max_length,
             check_body_line_length,
-            100
+            MAX_BODY_LINE_LENGTH
         );
-        // body_max_length
 
         macro_rules! insert_builtin {
             ($code:expr => $f:expr) => {
@@ -261,6 +251,11 @@ impl Config {
         insert_builtin!(linting::default::FOOTER_LEADING_BLANK => linting::default::check_footer_leading_blank);
         insert_builtin!(linting::default::SUBJECT_EMPTY => linting::default::check_subject_empty);
         insert_builtin!(linting::default::SUBJECT_LEADING_SPACE => linting::default::check_subject_leading_space);
+        insert_optional_builtin!(
+            missing_scope,
+            crate::lints::MISSING_SCOPE,
+            crate::lints::check_scope_present
+        );
         insert_optional_builtin!(
             signed_off_by,
             crate::lints::MISSING_DCO,

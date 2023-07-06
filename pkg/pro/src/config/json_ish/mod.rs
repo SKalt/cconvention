@@ -61,7 +61,7 @@ pub(crate) struct JsonConfig {
     pub signed_off_by: Option<BuiltinRule>,
     pub body_leading_blank: Option<BuiltinRule>,
     pub footer_leading_blank: Option<BuiltinRule>,
-    pub scope_empty: Option<BuiltinRule>,
+    pub missing_scope: Option<BuiltinRule>,
     pub missing_body: Option<BuiltinRule>,
     pub subject_empty: Option<BuiltinRule>,
     pub missing_subject_leading_space: Option<BuiltinRule>,
