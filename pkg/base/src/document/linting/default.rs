@@ -33,6 +33,7 @@ lazy_static! {
             // rule of thumb: if it's in the spec and we can't auto-fix it, it's an error
             // else, it's a warning
             (INVALID, Severity::ERROR),
+            (TYPE_ENUM, Severity::HINT), // not fixable, but not in the spec
             (HEADER_MAX_LINE_LENGTH, Severity::WARNING), // not in the spec
             (BODY_LEADING_BLANK, Severity::WARNING), // fixable
             (FOOTER_LEADING_BLANK, Severity::WARNING), // fixable
@@ -190,6 +191,7 @@ pub(crate) fn check_trailer_values(doc: &GitCommitDocument) -> Vec<lsp_types::Di
     )
 }
 
+// TODO: move to pro
 fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
     if let Some(subject) = &doc.subject {
@@ -210,36 +212,40 @@ fn check_scope_present(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Di
     lints
 }
 
-fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Option<lsp_types::Diagnostic> {
-    doc.subject
-        .as_ref()
-        .map(|header| {
-            let type_text = header.type_text();
-            if !crate::config::DEFAULT_TYPES
-                .iter()
-                .any(|(t, _)| t == &type_text)
-            {
-                let mut lint = utils::make_line_diagnostic(
-                    format!(
-                        "Type {:?} is not in ({}).",
-                        type_text,
-                        crate::config::DEFAULT_TYPES
-                            .iter()
-                            .map(|(t, _)| *t)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                    header.line_number as usize,
-                    0,
-                    type_text.chars().count() as u32,
-                );
-                lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-                Some(lint)
-            } else {
-                None
-            }
-        })
-        .flatten()
+pub(crate) fn check_type_enum(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
+    let mut lints = vec![];
+    lints.extend(
+        doc.subject
+            .as_ref()
+            .map(|header| {
+                let type_text = header.type_text();
+                if !crate::config::DEFAULT_TYPES
+                    .iter()
+                    .any(|(t, _)| t == &type_text)
+                {
+                    let mut lint = utils::make_line_diagnostic(
+                        format!(
+                            "Type {:?} is not in ({}).",
+                            type_text,
+                            crate::config::DEFAULT_TYPES
+                                .iter()
+                                .map(|(t, _)| *t)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        header.line_number as usize,
+                        0,
+                        type_text.chars().count() as u32,
+                    );
+                    lint.code = Some(lsp_types::NumberOrString::String(code.into()));
+                    Some(lint)
+                } else {
+                    None
+                }
+            })
+            .flatten(),
+    );
+    lints
 }
 
 pub fn check_subject_leading_space(

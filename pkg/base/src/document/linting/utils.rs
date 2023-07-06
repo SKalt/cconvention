@@ -3,8 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 use crate::document::{
     linting::default::{
         check_body_leading_blank, check_footer_leading_blank, check_subject_empty,
-        check_subject_leading_space, check_subject_line_length, BODY_LEADING_BLANK,
-        FOOTER_LEADING_BLANK, HEADER_MAX_LINE_LENGTH, SUBJECT_EMPTY, SUBJECT_LEADING_SPACE,
+        check_subject_leading_space, check_subject_line_length, check_type_enum,
+        BODY_LEADING_BLANK, FOOTER_LEADING_BLANK, HEADER_MAX_LINE_LENGTH, SUBJECT_EMPTY,
+        SUBJECT_LEADING_SPACE, TYPE_ENUM,
     },
     GitCommitDocument,
 };
@@ -28,7 +29,7 @@ pub fn construct_default_lint_tests_map(
     insert!(BODY_LEADING_BLANK, check_body_leading_blank);
     insert!(FOOTER_LEADING_BLANK, check_footer_leading_blank);
     // TODO: check there's exactly `n` leading blank lines before trailers?
-    // insert!(SCOPE_EMPTY, check_scope_present);
+    insert!(TYPE_ENUM, check_type_enum);
     insert!(SUBJECT_EMPTY, check_subject_empty);
     insert!(SUBJECT_LEADING_SPACE, check_subject_leading_space);
     tests
