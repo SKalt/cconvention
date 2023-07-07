@@ -8,7 +8,7 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceRoot}/editors/code/basic",
+        "--extensionDevelopmentPath=${workspaceRoot}/editors/code/base",
         "--disable-extensions",
         "${workspaceRoot}/examples"
       ],
@@ -29,7 +29,9 @@
         "${workspaceRoot}/examples"
       ],
       "env": {
-        "RUST_BACKTRACE": "1"
+        "RUST_BACKTRACE": "1",
+        "GIT_CC_LS_ENABLE_TELEMETRY": "true",
+        "GIT_CC_LS_ENABLE_ERROR_REPORTING": "true"
       },
       // "outFiles": ["${workspaceRoot}/client/dist/*.js"],
       "preLaunchTask": "Build Pro Server and Extension"

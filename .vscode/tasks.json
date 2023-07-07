@@ -14,10 +14,10 @@
       "group": "build",
       "type": "npm",
       "script": "watch",
-      "path": "editors/code/basic",
+      "path": "editors/code/base",
       "problemMatcher": {
         "base": "$tsc-watch",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
       },
       "isBackground": true
     },
@@ -26,10 +26,10 @@
       "group": "build",
       "type": "npm",
       "script": "build",
-      "path": "editors/code/basic",
+      "path": "editors/code/base",
       "problemMatcher": {
         "base": "$tsc",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
       }
     },
     {
@@ -50,7 +50,7 @@
       "group": "build",
       "type": "npm",
       "script": "watch",
-      "path": "editors/code/basic",
+      "path": "editors/code/base",
       "problemMatcher": {
         "base": "$tsc-watch",
         "fileLocation": ["relative", "${workspaceFolder}/editors/code/pro"]
@@ -65,7 +65,7 @@
       "path": "editors/code/pro",
       "problemMatcher": {
         "base": "$tsc",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/basic"]
+        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
       }
     },
     {
