@@ -185,7 +185,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             connection: conn,
         }
     }
-    pub fn from_tcp(config: Cfg, port: u16) -> Self {
+    pub fn from_tcp(_config: Cfg, _port: u16) -> Self {
         todo!("tcp connections not yet implemented")
     }
     pub fn serve(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {

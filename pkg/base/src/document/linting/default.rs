@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crop::RopeSlice;
+
 use super::{utils, GitCommitDocument, INVALID};
 
 pub const LINT_PROVIDER: &str = "git conventional commit language server";
@@ -52,51 +54,29 @@ lazy_static! {
 /// check there is exactly 1 line between the header and body
 pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_types::Diagnostic> {
     let mut lints = vec![];
-    let mut body_lines = doc.get_body();
-    if let Some((padding_line_number, next_line)) = body_lines.next() {
-        if next_line
-            .chars()
-            .next()
-            .map(|c| c.is_whitespace())
-            .unwrap_or(false)
-        {
-            let mut lint = utils::make_line_diagnostic(
-                "there should be a blank line between the subject and the body".into(),
-                padding_line_number,
-                0,
-                0,
-            );
-            lint.code = Some(lsp_types::NumberOrString::String(code.into()));
-            lints.push(lint);
-        } else {
-            // the first body line is blank
-            // check for multiple blank lines before the body
-            let mut n_blank_lines = 0u8;
-            for (line_number, line) in body_lines {
-                if line.chars().next().is_some() && line.chars().any(|c| !c.is_whitespace()) {
-                    if n_blank_lines > 1 {
-                        let mut lint = utils::make_diagnostic(
-                            padding_line_number,
-                            0,
-                            line_number,
-                            // since lsp_types::Position line numbers are 1-indexed
-                            // and enumeration line numbers are 0-indexed, `first_body_line_number`
-                            // is the line number of the preceding blank line
-                            0,
-                            // code, // TODO: make distinct code? Parametrize?
-                            // severity.to_owned(),
-                            format!("{n_blank_lines} blank lines between subject and body"),
-                        );
-                        lint.code = Some(lsp_types::NumberOrString::String(code.to_string()));
-                        lints.push(lint);
-                    }
-                    break;
-                } else {
-                    n_blank_lines += 1
+    if let Some((padding_line_number, _)) = doc.get_body().next() {
+        let mut n_blank_lines = 0u8;
+        let is_populated = |line: &RopeSlice| -> bool { line.chars().any(|c| !c.is_whitespace()) };
+        for (line_number, line) in doc.get_body() {
+            if is_populated(&line) {
+                if n_blank_lines != 1 {
+                    let mut lint = utils::make_diagnostic(
+                        padding_line_number,
+                        0,
+                        line_number,
+                        0,
+                        format!(
+                            "{n_blank_lines} blank lines between subject and body instead of 1"
+                        ),
+                    );
+                    lint.code = Some(lsp_types::NumberOrString::String(code.to_string()));
+                    lints.push(lint);
                 }
+                break;
+            } else {
+                n_blank_lines += 1
             }
-            // ignore multiple trailing newlines without a body
-        };
+        }
     };
     lints
 }
