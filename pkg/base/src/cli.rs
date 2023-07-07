@@ -8,8 +8,14 @@ use clap::{Arg, ArgAction, Command};
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 
 #[cfg(feature = "telemetry")]
-const SENTRY_DSN: &'static str = std::env!("SENTRY_DSN", "no $SENTRY_DSN set");
+const SENTRY_DSN: Option<&'static str> = std::option_env!("SENTRY_DSN");
 
+// see https://doc.rust-lang.org/cargo/reference/environment-variables.html
+/// the name of the bin or crate that is getting compiled
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+/// the version of the pkg that is getting compiled
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+// CARGO_BIN_NAME
 pub fn cli<F, Cfg: ConfigStore>(
     init: F,
     capabilities: &lsp_types::ServerCapabilities,
@@ -19,6 +25,7 @@ pub fn cli<F, Cfg: ConfigStore>(
 where
     F: Fn() -> Result<Cfg, Box<dyn std::error::Error + Sync + Send>>,
 {
+    // FIXME: need CLI args to toggle tracing, telemetry _separately_
     #[cfg(feature = "tracing")]
     {
         let reg = tracing_subscriber::Registry::default().with(
@@ -45,22 +52,24 @@ where
     };
     #[cfg(feature = "telemetry")]
     let _guard = if enable_error_reporting {
-        Some(sentry::init((
-            SENTRY_DSN,
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                auto_session_tracking: true,
-                traces_sample_rate: 1.0, // TODO: reduce sampling rate
-                enable_profiling: true,
-                profiles_sample_rate: 1.0, // TODO: reduce sampling rate
-                ..Default::default()
-            },
-        )))
+        SENTRY_DSN.map(|dsn| {
+            sentry::init((
+                dsn,
+                sentry::ClientOptions {
+                    release: sentry::release_name!(),
+                    auto_session_tracking: true,
+                    traces_sample_rate: 1.0, // TODO: reduce sampling rate
+                    enable_profiling: true,
+                    profiles_sample_rate: 1.0, // TODO: reduce sampling rate
+                    ..Default::default()
+                },
+            ))
+        })
     } else {
         None
     };
 
-    let cmd = Command::new(env!("CARGO_PKG_NAME"))
+    let cmd = Command::new(PKG_NAME).version(PKG_VERSION)
         .subcommand(Command::new("serve").arg(Arg::new("stdio").short('s').long("stdio").action(ArgAction::SetTrue).help("Communicate via stdio")).arg(Arg::new("tcp").short('t').long("tls").help("Communicate via TCP")))
         .subcommand(
             Command::new("check").infer_long_args(true)
@@ -71,7 +80,7 @@ where
                         .value_parser(clap::value_parser!(PathBuf)),
                 )
                 .arg(Arg::new("range").short('r').help("A git revision range to check.")),
-        ).subcommand_required(true);
+        );
     match cmd.get_matches().subcommand() {
         Some(("serve", sub_matches)) => {
             let cfg = init()?;
@@ -88,6 +97,7 @@ where
         }
         Some(("check", sub_matches)) => {
             // TODO: use a well-known format rather than whatever this is
+            // see https://eslint.org/docs/latest/use/formatters/ for inspiration
             let cfg = init()?.get(None)?;
             if let Some(file) = sub_matches.get_one::<PathBuf>("file") {
                 if !file.exists() {
@@ -116,10 +126,14 @@ where
                         lsp_types::NumberOrString::String(s) => s,
                         _ => panic!("expected code to be a string"),
                     };
+                    let start_line = d.range.start.line + 1;
+                    let start_column = d.range.start.character + 1;
                     println!(
-                        "{}\t{:?}\t{}\t{}", // TODO: colorize if a tty
+                        "{}\t{:?}:{}:{}\t{}\t{}", // TODO: colorize if a tty
                         &file.display(),
                         d.severity.unwrap(),
+                        start_line,
+                        start_column,
                         &code,
                         d.message,
                     );
