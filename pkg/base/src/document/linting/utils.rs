@@ -10,7 +10,7 @@ use crate::document::{
     GitCommitDocument,
 };
 
-use super::{default::LINT_PROVIDER, LintFn};
+use super::{default::ID, LintFn};
 
 pub fn construct_default_lint_tests_map(
     cutoff: u16,
@@ -43,7 +43,7 @@ pub(crate) fn make_diagnostic(
     message: String,
 ) -> lsp_types::Diagnostic {
     lsp_types::Diagnostic {
-        source: Some(LINT_PROVIDER.to_string()),
+        source: Some(ID.to_string()),
         range: lsp_types::Range {
             start: lsp_types::Position {
                 line: start_line as u32,
