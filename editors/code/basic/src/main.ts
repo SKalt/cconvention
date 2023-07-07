@@ -37,6 +37,7 @@ export async function activate(
   log.info(`using server: ${serverPath}`);
   const serverOptions: ServerOptions = {
     command: serverPath,
+    args: ["serve"],
     transport: TransportKind.stdio,
   };
   const clientOptions: LanguageClientOptions = {

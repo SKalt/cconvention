@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::{config::ConfigStore, document::GitCommitDocument, git::git};
 #[cfg(feature = "tracing")]
 use atty::{self, Stream};
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
 
@@ -61,23 +61,28 @@ where
     };
 
     let cmd = Command::new(env!("CARGO_PKG_NAME"))
-        .subcommand(Command::new("serve"))
+        .subcommand(Command::new("serve").arg(Arg::new("stdio").short('s').long("stdio").action(ArgAction::SetTrue).help("Communicate via stdio")).arg(Arg::new("tcp").short('t').long("tls").help("Communicate via TCP")))
         .subcommand(
-            Command::new("check")
+            Command::new("check").infer_long_args(true)
                 .arg(
-                    Arg::new("file").short('f').long("file")
+                    Arg::new("file").short('f')
                         .help("A relative or absolute path to the file containing your commit message.")
                         .conflicts_with_all(["range"])
                         .value_parser(clap::value_parser!(PathBuf)),
                 )
-                .arg(Arg::new("range").short('r').long("range").help("A git revision range to check.")),
+                .arg(Arg::new("range").short('r').help("A git revision range to check.")),
         ).subcommand_required(true);
     match cmd.get_matches().subcommand() {
-        Some(("serve", _)) => {
+        Some(("serve", sub_matches)) => {
             let cfg = init()?;
-            crate::server::Server::from_stdio(cfg)
-                .init(capabilities)?
-                .serve()?;
+            let mut server = if sub_matches.get_flag("stdio") {
+                crate::server::Server::from_stdio(cfg)
+            } else if sub_matches.get_flag("tcp") {
+                crate::server::Server::from_tcp(cfg, 9999)
+            } else {
+                unreachable!()
+            };
+            server.init(capabilities)?.serve()?;
             log_info!("language server terminated");
             return Ok(());
         }
@@ -85,7 +90,6 @@ where
             // TODO: use a well-known format rather than whatever this is
             let cfg = init()?.get(None)?;
             if let Some(file) = sub_matches.get_one::<PathBuf>("file") {
-                let file = file.canonicalize()?;
                 if !file.exists() {
                     return Err(format!("{} does not exist", file.display()).into());
                 }
@@ -93,11 +97,10 @@ where
                     return Err(format!("{} is not a file", file.display()).into());
                 }
                 let text = std::fs::read_to_string(&file)?;
-                let doc =
-                    GitCommitDocument::new()
-                        .with_url(&lsp_types::Url::from_file_path(&file).map_err(|_| {
-                            format!("unable to construct url from {}", file.display())
-                        })?)
+                let doc = GitCommitDocument::new()
+                        // .with_url(&lsp_types::Url::from_file_path(&file).map_err(|_| {
+                        //     format!("unable to construct url from {}", file.display())
+                        // })?)
                         .with_text(text);
                 let diagnostics = cfg.lint(&doc);
                 let error_count = diagnostics
@@ -135,19 +138,21 @@ where
                     let message = git(&["log", "-n", "1", "--format=%B", hash], None)?;
                     let doc = GitCommitDocument::new().with_text(message);
                     let diagnostics_for_hash = cfg.lint(&doc);
-                    diagnostics.iter().for_each(|d: &lsp_types::Diagnostic| {
-                        let code = match d.code.as_ref().unwrap() {
-                            lsp_types::NumberOrString::String(s) => s,
-                            _ => panic!("expected code to be a string"),
-                        };
-                        println!(
-                            "{}\t{:?}\t{}\t{}", // TODO: colorize if a tty
-                            hash,
-                            d.severity.unwrap(),
-                            &code,
-                            d.message,
-                        );
-                    });
+                    diagnostics_for_hash
+                        .iter()
+                        .for_each(|d: &lsp_types::Diagnostic| {
+                            let code = match d.code.as_ref().unwrap() {
+                                lsp_types::NumberOrString::String(s) => s,
+                                _ => panic!("expected code to be a string"),
+                            };
+                            println!(
+                                "{}\t{:?}\t{}\t{}", // TODO: colorize if a tty
+                                hash,
+                                d.severity.unwrap(),
+                                &code,
+                                d.message,
+                            );
+                        });
                     diagnostics.extend(diagnostics_for_hash);
                 }
                 let error_count = diagnostics
@@ -159,6 +164,9 @@ where
                     .filter(|d| d.severity.unwrap() == lsp_types::DiagnosticSeverity::WARNING)
                     .count();
                 println!("{} errors, {} warnings", error_count, warning_count);
+                if error_count > 0 {
+                    return Err("errors found".into());
+                }
             }
             return Ok(());
         }

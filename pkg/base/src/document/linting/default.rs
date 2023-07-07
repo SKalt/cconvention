@@ -54,7 +54,12 @@ pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_
     let mut lints = vec![];
     let mut body_lines = doc.get_body();
     if let Some((padding_line_number, next_line)) = body_lines.next() {
-        if next_line.chars().next().is_some() {
+        if next_line
+            .chars()
+            .next()
+            .map(|c| c.is_whitespace())
+            .unwrap_or(false)
+        {
             let mut lint = utils::make_line_diagnostic(
                 "there should be a blank line between the subject and the body".into(),
                 padding_line_number,
@@ -66,7 +71,7 @@ pub fn check_body_leading_blank(doc: &GitCommitDocument, code: &str) -> Vec<lsp_
         } else {
             // the first body line is blank
             // check for multiple blank lines before the body
-            let mut n_blank_lines = 1u8;
+            let mut n_blank_lines = 0u8;
             for (line_number, line) in body_lines {
                 if line.chars().next().is_some() && line.chars().any(|c| !c.is_whitespace()) {
                     if n_blank_lines > 1 {
