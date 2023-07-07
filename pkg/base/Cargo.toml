@@ -16,29 +16,40 @@ serde = "1"
 crop = "0.3.0"
 tree-sitter-gitcommit = "0.3.3"
 regex = "1"
-atty = "0.2.14"
-tracing = {version = "0.1", optional = true }
-tracing-subscriber = {version = "0.3", optional = true, features = ["registry"]}
-indexmap = {version = "2", features = ["serde"] }
-
+atty = { version = "0.2", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = [
+  "registry",
+] }
+indexmap = { version = "2", features = ["serde"] }
+clap = { version = "4", optional = true }
 [dependencies.sentry]
 version = "0.31.5"
 default-features = false
 features = [
   # defaults, less "transport"
-  "backtrace", "contexts", "debug-images", "panic",
+  "backtrace",
+  "contexts",
+  "debug-images",
+  "panic",
   # transport stack
-  "reqwest", "rustls",
+  "reqwest",
+  "rustls",
   # profiling + tracing tools
-  "profiling", "tracing",
+  "profiling",
+  "tracing",
 ]
 optional = true
 
 
 [features]
+cli = ["dep:clap", "dep:atty"]
 tracing = ["dep:tracing", "dep:tracing-subscriber"]
 # TODO: separate error reporting feature
 telemetry = ["dep:sentry", "tracing"]
 
+[[bin]]
+name = "base_language_server"
+required-features = ["cli"]
 # [profile.release]
 # lto = true

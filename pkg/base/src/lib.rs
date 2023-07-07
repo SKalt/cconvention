@@ -26,6 +26,8 @@ macro_rules! span {
     };
 }
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod config;
 pub mod document;
 pub mod git;

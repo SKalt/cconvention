@@ -102,8 +102,8 @@ pub trait ConfigStore {
         worktree_root: Option<PathBuf>,
     ) -> Result<Arc<dyn Config>, Box<dyn std::error::Error + Send + Sync>>;
     // self has to ^ be mutable because we might need to update the cache of configurations
-    /// mark the given paths as dirty, so that the configuration is reloaded
-    /// optionally push updates to lints
+    /// mark the given paths as dirty, returning the paths associated with invalidated configuration
+    /// in order to reload them and optionally push updates to affected lints
     fn set_dirty(&mut self, _paths: Vec<PathBuf>) -> Vec<PathBuf> {
         vec![]
     }

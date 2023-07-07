@@ -41,7 +41,7 @@ pub struct GitCommitDocument {
 
 /// state management for a git commit document
 impl GitCommitDocument {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let code = crop::Rope::from("".to_string());
         let mut parser = {
             let language = tree_sitter_gitcommit::language();

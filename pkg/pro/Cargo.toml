@@ -9,35 +9,12 @@ edition = "2021"
 lsp-server = "0.7.0"
 lsp-types = "0.94.0"
 lazy_static = "1.4.0"
-bitflags = "2.3.2"
-atty = "0.2.14"
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", optional = true, features = [
-  "registry",
-] }
 toml = { version = "0.7.5", optional = true }
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tree-sitter = "0.20.10"
-
-[dependencies.sentry]
-version = "0.31.3"
-default-features = false
-features = [
-  # defaults, less "transport"
-  "backtrace",
-  "contexts",
-  "debug-images",
-  "panic",
-  # transport stack
-  "reqwest",
-  "rustls",
-  # profiling + tracing tools
-  "profiling",
-  "tracing",
-]
-optional = true
+tracing = { version = "0.1", optional = true }
 
 [dependencies.base]
 path = "../base"
@@ -45,15 +22,15 @@ default-features = false
 
 
 [features]
-tracing = ["base/tracing", "dep:tracing", "dep:tracing-subscriber"]
+cli = ["base/cli"]
+tracing = ["base/tracing", "dep:tracing"]
 
 # TODO: separate error reporting feature
-telemetry = ["tracing", "base/telemetry", "dep:sentry"]
+telemetry = ["tracing", "base/telemetry"]
 
 toml_config = ["toml/preserve_order"]
 
-# [profile.release]
-# lto = true
-
 # https://doc.rust-lang.org/cargo/reference/cargo-targets.html#binaries
-# [[bin]]
+[[bin]]
+name = "pro_language_server"
+required-features = ["cli"]
