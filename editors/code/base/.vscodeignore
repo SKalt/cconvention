@@ -3,6 +3,7 @@
 !icon.png
 !dist/server
 !package-lock.json
+!LICENSE.md
 
 node_modules
 scripts

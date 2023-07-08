@@ -1,5 +1,5 @@
 {
-  "name": "git-conventional-commit-ls-basic",
+  "name": "git-conventional-commit-ls-base",
   "version": "1.0.0",
   "description": "Highlighting, linting, and completion for conventional commit messages",
   "engines": {
@@ -8,13 +8,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/skalt/conventional-commit-language-server.git",
-    "directory": "editors/code/base"
+    "directory": "editors/code/pro"
   },
   "main": "./dist/main.min.common.js",
-  "scripts": {
-    "build": "./scripts/build.sh",
-    "watch": "./scripts/build.sh --watch"
-  },
   "keywords": [
     "git",
     "git-commit",
