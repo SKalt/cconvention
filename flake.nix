@@ -1,8 +1,8 @@
 {
-  description = "TODO: add a description";
+  description = "A language server to help write conventional commits.";
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
   };
 
   outputs = { self, flake-utils, nixpkgs }:
@@ -11,26 +11,39 @@
         pkgs = (import nixpkgs) {
           inherit system;
         };
-        # Generate a user-friendly version number.
-        version = builtins.substring 0 8 self.lastModifiedDate;
         cargoDeps = pkgs.rustPlatform.importCargoLock {
           lockFile = ./Cargo.lock;
         };
+
       in
       rec {
         packages = {
           # For `nix build` & `nix run`:
-          default = pkgs.rustPlatform.buildRustPackage {
-            # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
-            inherit version;
-            pname = "pg_walk";
-            src = ./.;
-            nativeBuildInputs = with pkgs; [
-              cargo
-              clippy
-              rustc
-            ];
-          };
+          # TODO: base, pro
+          base = pkgs.rustPlatform.buildRustPackage
+            {
+              # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
+              inherit cargoDeps;
+              cargoLock = {
+                lockFile = ./Cargo.lock;
+              };
+              pname = "conventional-commit-language-server";
+              version = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml))."package".version;
+              src = ./.;
+              # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.
+              # > Note that setting cargoLock.lockFile or cargoLock.lockFileContents doesn’t add a Cargo.lock to your src, and a Cargo.lock is still required to build a rust package.
+              # > -- https://nixos.org/manual/nixpkgs/stable/#importing-a-cargo.lock-file
+              # postPatch = ''
+              #   ln -s ${./Cargo.lock} Cargo.lock
+              # '';
+
+              nativeBuildInputs = with pkgs;
+                [
+                  cargo
+                  clippy
+                  rustc
+                ];
+            };
         };
         # For `nix develop`:
         devShell = pkgs.mkShell {
@@ -45,13 +58,26 @@
           ];
           buildInputs = with pkgs;
             [
+              # rust tools
               cargo-bloat
-              nixpkgs-fmt
-              pkgconfig
-              rnix-lsp
               rust-analyzer
               rustfmt
+
+              # nix support
+              nixpkgs-fmt
+              rnix-lsp
+
+              # for recording demos
+              vhs
+              ttyd
+              ffmpeg
+              libfaketime
+              git
+
+              # demo editors
               helix
+              vim
+              neovim
             ];
         };
       }
