@@ -1,0 +1,16 @@
+[[language]]
+name = "git-commit"
+scope = "source.git-commit"
+file-types = ["COMMIT_EDITMSG"]
+auto-format = true
+config = {}
+#^ for the language server
+
+[language.language-server]
+command = "conventional-commit-language-server"
+args = ["serve", "--stdio"]
+
+[language.language-server.environment]
+GIT_CC_LS_ENABLE_TELEMETRY = "true"
+GIT_CC_LS_ENABLE_ERROR_REPORTING = "true"
+RUST_BACKTRACE = "1"
