@@ -1,4 +1,5 @@
 use super::Severity;
+use base::log_debug;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
@@ -6,30 +7,32 @@ use toml;
 
 fn get_config_dir(
     repo_root: &PathBuf,
-) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
-    let config_dir = repo_root.join(".config");
+) -> Result<Option<PathBuf>, Box<dyn std::error::Error + Sync + Send>> {
+    let config_dir: PathBuf = repo_root.join(".config");
     if !config_dir.exists() {
-        return Err(format!("{:?} does not exist.", config_dir).into());
+        log_debug!("directory {:?} does not exist.", config_dir);
+        return Ok(None);
     }
     if !config_dir.is_dir() {
         return Err(format!("{:?} is not a directory.", config_dir).into());
     }
-    Ok(config_dir)
+    Ok(Some(config_dir))
 }
 
 fn get_file(
     config_dir: &PathBuf,
     ext: &str,
-) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
+) -> Result<Option<PathBuf>, Box<dyn std::error::Error + Sync + Send>> {
     let config_file = config_dir.join(format!("commit_convention.{ext}"));
     if !config_file.exists() {
-        return Err(format!("{:?} does not exist.", config_file).into());
+        log_debug!("{:?} does not exist.", config_file);
+        return Ok(None);
     }
     if !config_file.is_file() {
         // ^will traverse symlinks
         return Err(format!("{:?} is not a file.", config_file).into());
     }
-    Ok(config_file)
+    Ok(Some(config_file))
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -50,7 +53,7 @@ pub(crate) struct BuiltinRule {
     pub(crate) severity: Severity,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Default, Debug, Clone)]
 pub(crate) struct JsonConfig {
     pub scopes: Option<IndexMap<String, String>>,
     pub types: Option<IndexMap<String, String>>,
@@ -69,6 +72,7 @@ pub(crate) struct JsonConfig {
     pub plugins: IndexMap<String, Rule>,
 }
 
+#[cfg(feature = "toml_config")]
 fn from_toml(
     config_file: PathBuf,
 ) -> Result<(JsonConfig, PathBuf), Box<dyn std::error::Error + Sync + Send>> {
@@ -87,16 +91,23 @@ fn from_json(
 
 pub(crate) fn get_config(
     repo_root: &PathBuf,
-) -> Result<(JsonConfig, PathBuf), Box<dyn std::error::Error + Sync + Send>> {
-    let config_dir = get_config_dir(repo_root)?;
-    // TODO: hide toml ops behind #[cfg(feature = "toml_config"))]
-    get_file(&config_dir, "toml").map(from_toml)
+) -> Result<Option<(JsonConfig, PathBuf)>, Box<dyn std::error::Error + Sync + Send>> {
+    if let Some(config_dir) = get_config_dir(repo_root)? {
+        #[cfg(feature = "toml_config")]
+        if let Some(config_file) = get_file(&config_dir, "toml")? {
+            return from_toml(config_file).map(Some);
+        }
+        // TODO: support yaml
+        if let Some(config_file) = get_file(&config_dir, "json")? {
+            return from_json(config_file).map(Some);
+        }
+    }
+    if let Some(config_file) = get_file(repo_root, "toml")? {
+        return from_toml(config_file).map(Some);
+    }
     // TODO: support yaml
-    // .or_else(|| get_file(config_dir, "yaml"))
-    // .or_else(|| get_file(config_dir, "yml"))
-    .or_else(|_| get_file(&config_dir, "json").map(from_json))
-    .or_else(|_| get_file(repo_root, "toml").map(from_toml))
-    // .or_else(|| get_file(repo_root, "yaml"))
-    // .or_else(|| get_file(repo_root, "yml"))
-    .or_else(|_| get_file(repo_root, "json").map(from_json))?
+    if let Some(config_file) = get_file(repo_root, "json")? {
+        return from_json(config_file).map(Some);
+    }
+    Ok(None)
 }

@@ -61,17 +61,16 @@ impl Config {
     pub fn new(worktree_root: &PathBuf) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         use base::document::linting;
         // IDEA: draw lint-fn closures from a long-lived default store
-        let (json, file) = json_ish::get_config(worktree_root)?;
+        let (json, src) = json_ish::get_config(worktree_root)?
+            .map(|(json, file)| (json, file.as_os_str().to_string_lossy().to_string()))
+            .unwrap_or((json_ish::JsonConfig::default(), "default".to_string()));
         let enabled_lints: Vec<String> = linting::default::ENABLED_LINTS
             .iter()
             .chain(&["body_line_max_length"])
             .map(|lint_code| lint_code.to_string())
             .collect();
-        let types_are_missing = json
-            .types
-            .as_ref()
-            .map(|type_enum| type_enum.is_empty())
-            .unwrap_or(true);
+        let types_are_missing = json.types.as_ref().map(|t| t.is_empty()).unwrap_or(true);
+
         let types = if types_are_missing {
             base::config::DEFAULT_TYPES
                 .iter()
@@ -80,11 +79,7 @@ impl Config {
         } else {
             json.types.clone().unwrap()
         };
-        let scopes = json
-            .scopes
-            .as_ref()
-            .map(|scopes| scopes.clone())
-            .unwrap_or_default();
+        let scopes = json.scopes.unwrap_or_default();
         let mut cfg = Config {
             worktree_root: worktree_root.clone(),
             enabled_lints,
@@ -132,7 +127,6 @@ impl Config {
             }),
         );
 
-        cfg.scopes = json.scopes.unwrap_or_default();
         if !cfg.scopes.is_empty() {
             cfg.enabled_lints.push("scope_enum".to_string());
             cfg.severity.insert(
@@ -182,7 +176,7 @@ impl Config {
 
         macro_rules! handle_builtin_length_rule {
             ($code:expr, $id:ident, $f:ident, $cutoff:expr) => {
-                if let Some(rule) = &json.$id {
+                if let Some(rule) = json.$id {
                     let code = $code;
                     let cutoff = rule.max_length.unwrap_or($cutoff);
                     cfg.tests
@@ -219,20 +213,18 @@ impl Config {
             };
         }
         macro_rules! insert_optional_builtin {
-            ($id:ident, $code:expr, $f:expr) => {
-                let severity = json
-                    .$id
-                    .map(|rule| rule.severity).unwrap_or(Severity::None);
-                if let Some(severity) = severity.clone().into() {
-                    log_debug!("inserting optional builtin lint: {}", $code);
-                    cfg.severity.insert($code.to_string(), severity);
-                    cfg.enabled_lints.push($code.to_string());
-                    insert_builtin!($code => $f);
-                } else {
-                    log_debug!("not inserting optional builtin lint {:?} since it was {:?} in {:?}", $code, severity, file);
-                }
-            };
-        }
+                ($id:ident, $code:expr, $f:expr) => {
+                    let severity = json.$id.map(|rule| rule.severity).unwrap_or(Severity::None);
+                    if let Some(severity) = severity.clone().into() {
+                        log_debug!("inserting optional builtin lint: {}", $code);
+                        cfg.severity.insert($code.to_string(), severity);
+                        cfg.enabled_lints.push($code.to_string());
+                        insert_builtin!($code => $f);
+                    } else {
+                        log_debug!("not inserting optional builtin lint {:?} since it was {:?} in {:?}", $code, severity, &src);
+                    }
+                };
+            }
         insert_builtin!(linting::default::BODY_LEADING_BLANK => linting::default::check_body_leading_blank);
         insert_builtin!(linting::default::FOOTER_LEADING_BLANK => linting::default::check_footer_leading_blank);
         insert_builtin!(linting::default::SUBJECT_EMPTY => linting::default::check_subject_empty);
@@ -261,7 +253,7 @@ impl Config {
                     $code.to_string(),
                     json.$id
                         .map(|s| s.severity)
-                        .map(|s| s.into())
+                        .map(|s| -> Option<lsp_types::DiagnosticSeverity> { s.into() })
                         .flatten()
                         .unwrap_or_else(|| {
                             linting::default::LINT_SEVERITY
@@ -292,7 +284,7 @@ impl Config {
                         "{:?} error compiling tree-sitter query `{}.query` @ {} line {} column {} : {:?}",
                         e.kind,
                         code,
-                        file.as_os_str().to_str().unwrap(),
+                        &src,
                         e.row,
                         e.column,
                         e.message
