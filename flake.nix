@@ -73,6 +73,7 @@
               ffmpeg
               libfaketime
               git
+              bashInteractive
 
               # demo editors
               helix
