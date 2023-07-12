@@ -42,8 +42,10 @@ where
         #[cfg(feature = "telemetry")]
         {
             if enable_tracing {
+                log_debug!("tracing enabled");
                 reg.with(sentry::integrations::tracing::layer()).init();
             } else {
+                log_debug!("tracing disabled");
                 reg.init();
             };
         }
@@ -52,6 +54,7 @@ where
     };
     #[cfg(feature = "telemetry")]
     let _guard = if enable_error_reporting {
+        log_debug!("error reporting enabled");
         SENTRY_DSN.map(|dsn| {
             sentry::init((
                 dsn,
@@ -66,6 +69,7 @@ where
             ))
         })
     } else {
+        log_debug!("error reporting disabled");
         None
     };
 
@@ -80,7 +84,7 @@ where
                         .value_parser(clap::value_parser!(PathBuf)),
                 )
                 .arg(Arg::new("range").short('r').help("A git revision range to check.")),
-        );
+        ).subcommand_required(true);
     match cmd.get_matches().subcommand() {
         Some(("serve", sub_matches)) => {
             let cfg = init()?;

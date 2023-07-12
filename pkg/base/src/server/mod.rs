@@ -462,7 +462,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             result: None,
             error: Some(lsp_server::ResponseError {
                 code: lsp_server::ErrorCode::MethodNotFound as i32,
-                message: "method not found".to_owned(),
+                message: format!("method not found: {:?}", request.method),
                 data: None,
             }),
         };
