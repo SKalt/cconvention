@@ -576,7 +576,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                                         },
                                         end: lsp_types::Position {
                                             line: position.line,
-                                            character: label.len().try_into().unwrap(),
+                                            character: label.len() as u32,
                                         },
                                     },
                                     new_text: label.to_owned(),

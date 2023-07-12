@@ -338,8 +338,8 @@ impl Subject {
                 let mut lint = utils::make_line_diagnostic(
                     "Scope should start with '('.".into(),
                     self.line_number as usize,
-                    start.try_into().unwrap(),
-                    (start + 1).try_into().unwrap(),
+                    start as u32,
+                    (start + 1) as u32,
                 );
                 lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
                 // lsp_types::DiagnosticSeverity::ERROR,
@@ -351,8 +351,8 @@ impl Subject {
                 let mut lint = utils::make_line_diagnostic(
                     "Scope should end with ')'".into(),
                     self.line_number as usize,
-                    (end - 1).try_into().unwrap(),
-                    end.try_into().unwrap(),
+                    (end - 1) as u32,
+                    end as u32,
                     // config,
                 );
                 lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));
@@ -378,8 +378,8 @@ impl Subject {
             let mut lint = utils::make_line_diagnostic(
                 "Scope contains whitespace.".into(),
                 self.line_number as usize,
-                start.try_into().unwrap(),
-                end.try_into().unwrap(),
+                start as u32,
+                end as u32,
                 // config,
             );
             lint.code = Some(lsp_types::NumberOrString::String(linting::INVALID.into()));

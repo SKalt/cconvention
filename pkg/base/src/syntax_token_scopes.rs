@@ -55,7 +55,7 @@ pub(crate) fn handle_all_tokens(
                 _other => {}
             };
             let range = c.node.range();
-            let start_line: u32 = range.start_point.row.try_into().unwrap();
+            let start_line = range.start_point.row as u32;
             let delta_line: u32 = if start_line > line {
                 start = 0;
                 start_line - line
@@ -63,15 +63,15 @@ pub(crate) fn handle_all_tokens(
                 0
             };
             let delta_start: u32 = {
-                let token_start: u32 = range.start_point.column.try_into().unwrap();
+                let token_start = range.start_point.column as u32;
                 if token_start == 0 {
                     0
                 } else {
                     token_start - start
                 }
             };
-            line = range.end_point.row.try_into().unwrap();
-            start = range.end_point.column.try_into().unwrap();
+            line = range.end_point.row as u32;
+            start = range.end_point.column as u32;
 
             let token_type: u32 = *SYNTAX_TOKEN_SCOPES.get(capture_name).unwrap();
             let token = lsp_types::SemanticToken {
