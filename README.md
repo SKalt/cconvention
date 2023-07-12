@@ -34,9 +34,9 @@ Pairs well with [`git-cc`][git-cc], a <abbr title="Terminal User Interface">TUI<
 
 This tool comes in two variants -- an open-source edition which you can build upon and use for any purpose, and a source-provided version that
 
-> To use software listed on this site to make money or for work, you need to buy a license.
+> To use [this software] to make money or for work, you need to buy a license.
 > If you’re part of a team, everyone on your team who uses the software needs to buy one.
-> You can [try before you buy](./LICENSE.pro.md#free-trials), to make sure the software works and integrates well with your prototypes.
+> You can [try before you buy](./pkg/pro/LICENSE.md#free-trials), to make sure the software works and integrates well with your prototypes.
 
 |            Feature             |        OSS        |       Source-provided       |
 | :----------------------------: | :---------------: | :-------------------------: |
