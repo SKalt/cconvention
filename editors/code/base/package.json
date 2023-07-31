@@ -12,8 +12,9 @@
   },
   "main": "./dist/main.min.common.js",
   "scripts": {
-    "build": "./scripts/build.sh",
-    "watch": "./scripts/build.sh --watch"
+    "build-js": "./scripts/build_js.sh",
+    "build-textmate": "./scripts/build_textmate.sh",
+    "watch": "./scripts/build_js.sh --watch"
   },
   "keywords": [
     "git",

@@ -3,75 +3,59 @@
   "tasks": [
     {
       "label": "Build Base Server",
-      "type": "cargo",
-      "command": "build",
-      "problemMatcher": ["$rustc"],
       "group": "build",
-      "args": ["--package", "base", "--all-features"]
-    },
-    {
-      "label": "Build Base Extension in Background",
-      "group": "build",
-      "type": "npm",
-      "script": "watch",
-      "path": "editors/code/base",
-      "problemMatcher": {
-        "base": "$tsc-watch",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
-      },
-      "isBackground": true
+      "type": "shell",
+      "command": "make",
+      "args": ["server"],
+      "options": {
+        "env": {
+          "VERSION": "base"
+        }
+      }
     },
     {
       "label": "Build Base Extension",
       "group": "build",
-      "type": "npm",
-      "script": "build",
-      "path": "editors/code/base",
-      "problemMatcher": {
-        "base": "$tsc",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
+      "type": "shell",
+      "command": "make",
+      "args": ["client"],
+      "options": {
+        "env": {
+          "VERSION": "base"
+        }
       }
     },
     {
       "label": "Build Base Server and Extension",
-      "dependsOn": ["Build Base Server", "Build Base Extension"],
-      "problemMatcher": "$rustc"
+      "dependsOn": ["Build Base Server", "Build Base Extension"]
     },
     {
       "label": "Build Pro Server",
-      "type": "cargo",
-      "command": "build",
-      "problemMatcher": ["$rustc"],
       "group": "build",
-      "args": ["--package", "pro", "--all-features"]
-    },
-    {
-      "label": "Build Pro Extension in Background",
-      "group": "build",
-      "type": "npm",
-      "script": "watch",
-      "path": "editors/code/base",
-      "problemMatcher": {
-        "base": "$tsc-watch",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/pro"]
-      },
-      "isBackground": true
+      "type": "shell",
+      "command": "make",
+      "args": ["server"],
+      "options": {
+        "env": {
+          "VERSION": "pro"
+        }
+      }
     },
     {
       "label": "Build Pro Extension",
       "group": "build",
-      "type": "npm",
-      "script": "build",
-      "path": "editors/code/pro",
-      "problemMatcher": {
-        "base": "$tsc",
-        "fileLocation": ["relative", "${workspaceFolder}/editors/code/base"]
+      "type": "shell",
+      "command": "make",
+      "args": ["client"],
+      "options": {
+        "env": {
+          "VERSION": "pro"
+        }
       }
     },
     {
       "label": "Build Pro Server and Extension",
-      "dependsOn": ["Build Pro Server", "Build Pro Extension"],
-      "problemMatcher": "$rustc"
+      "dependsOn": ["Build Pro Server", "Build Pro Extension"]
     }
   ]
 }

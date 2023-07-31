@@ -8,5 +8,6 @@
     "editor.acceptSuggestionOnCommitCharacter": false,
     "editor.acceptSuggestionOnEnter": "off"
   },
-  "rust-analyzer.cargo.features": "all"
+  "rust-analyzer.cargo.features": "all",
+  "nixEnvSelector.nixFile": "${workspaceRoot}/flake.nix"
 }
