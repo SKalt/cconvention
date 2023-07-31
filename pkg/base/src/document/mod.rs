@@ -63,14 +63,14 @@ impl GitCommitDocument {
     pub fn with_url(mut self, url: &lsp_types::Url) -> Self {
         self.worktree_root = to_path(url)
             .ok()
-            .map(|path| get_worktree_root(&path).ok())
-            .flatten();
+            .and_then(|path| get_worktree_root(&path).ok());
         self
     }
 
     pub fn set_text(&mut self, text: String) -> &mut Self {
         self.code = crop::Rope::from(text.clone());
         self.syntax_tree = self.parser.parse(&text, None).unwrap();
+        self.update_subject();
         self
     }
     pub fn with_text(mut self, text: String) -> Self {
@@ -144,6 +144,12 @@ impl GitCommitDocument {
         }
 
         self
+    }
+}
+
+impl Default for GitCommitDocument {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -266,10 +272,13 @@ impl GitCommitDocument {
 /// linting
 impl GitCommitDocument {
     pub(crate) fn get_mandatory_lints(&self) -> Vec<lsp_types::Diagnostic> {
+        log_debug!("performing mandatory lints");
         let mut lints = vec![];
         if let Some(subject) = &self.subject {
+            log_debug!("linting subject");
             lints.extend(subject.get_diagnostics());
         };
+        log_debug!("linting trailers");
         lints.extend(self.check_trailers());
         // IDEA: check for common trailer misspellings, e.g. lowercasing of "breaking change:",
         // "signed-off-by:", etc.

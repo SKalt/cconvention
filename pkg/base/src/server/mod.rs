@@ -369,7 +369,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             let commit = self.commits.get_mut(&uri).unwrap();
             log_debug!("refreshing syntax tree");
             commit.set_text(text);
-            let diagnostics = self.config.get(commit.worktree_root.clone())?.lint(&commit);
+            let diagnostics = self.config.get(commit.worktree_root.clone())?.lint(commit);
             self.publish_diagnostics(uri.clone(), diagnostics);
         }
         Ok(ServerLoopAction::Continue)
@@ -528,7 +528,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                     ));
                 } else if character_index <= scope_len + type_len {
                     result.extend(config::as_completion(
-                        &mut self
+                        &self
                             .config
                             .get(commit.worktree_root.clone())?
                             .scope_suggestions(),

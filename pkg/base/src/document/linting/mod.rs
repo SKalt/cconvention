@@ -28,18 +28,20 @@ pub trait LintConfig {
     // fn lint_tests(&self) -> &HashMap<&str, Box<LintFn>>;
     fn get_test(&self, code: &str) -> Option<&Arc<LintFn>>;
     fn lint(&self, doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
-        let mut diagnostics = vec![];
-        diagnostics.extend(doc.get_mandatory_lints());
+        log_debug!("linting document: {}", doc.code);
+        let mut diagnostics = doc.get_mandatory_lints();
+        log_debug!("mandatory diagnostics: {:?}", diagnostics);
         // let code_map = construct_default_lint_tests_map(self);
         // for code in self.enabled_lint_codes() {}
         diagnostics.extend(
             self.enabled_lint_codes()
                 .iter()
                 .filter_map(|code| {
-                    self.get_test(code).or_else(|| {
+                    let test = self.get_test(code);
+                    if test.is_none() {
                         log_debug!("Missing test for code {:?}", code);
-                        None
-                    })
+                    }
+                    test
                 })
                 .map(|f| f(doc))
                 .map(|mut v| {

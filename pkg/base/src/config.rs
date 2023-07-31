@@ -48,7 +48,7 @@ pub trait Config: LintConfig {
         let worktree_root = self.worktree_root();
         let files = git::staged_files(worktree_root.clone());
         let applicable_scopes: Vec<(String, String)> = {
-            let output = git::related_commits(files.as_slice(), worktree_root.clone());
+            let output = git::related_commits(files.as_slice(), worktree_root);
             let unique: HashMap<&str, usize> = output
                 .iter()
                 .filter_map(|line| RE.captures(line))

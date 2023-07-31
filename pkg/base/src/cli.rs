@@ -34,7 +34,7 @@ where
                 .with_ansi(atty::is(Stream::Stderr))
                 .with_filter(tracing_subscriber::filter::filter_fn(|meta| {
                     match meta.module_path() {
-                        Some(path) => path.starts_with(module_path!()),
+                        Some(path) => path.starts_with(module_path!()) || path.starts_with("base"),
                         None => false,
                     }
                 })),
@@ -74,9 +74,12 @@ where
     };
 
     let cmd = Command::new(PKG_NAME).version(PKG_VERSION)
-        .subcommand(Command::new("serve").arg(Arg::new("stdio").short('s').long("stdio").action(ArgAction::SetTrue).help("Communicate via stdio")).arg(Arg::new("tcp").short('t').long("tls").help("Communicate via TCP")))
         .subcommand(
-            Command::new("check").infer_long_args(true)
+            Command::new("serve").about("Run a language server")
+                .arg(Arg::new("stdio").short('s').long("stdio").action(ArgAction::SetTrue).help("Communicate via stdio"))
+                .arg(Arg::new("tcp").short('t').long("tls").help("Communicate via TCP")))
+        .subcommand(
+            Command::new("check").about("Lint commit message(s)").infer_long_args(true)
                 .arg(
                     Arg::new("file").short('f')
                         .help("A relative or absolute path to the file containing your commit message.")
@@ -117,14 +120,13 @@ where
                         // })?)
                         .with_text(text);
                 let diagnostics = cfg.lint(&doc);
-                let error_count = diagnostics
-                    .iter()
-                    .filter(|d| d.severity.unwrap() == lsp_types::DiagnosticSeverity::ERROR)
-                    .count();
-                let warning_count = diagnostics
-                    .iter()
-                    .filter(|d| d.severity.unwrap() == lsp_types::DiagnosticSeverity::WARNING)
-                    .count();
+                let mut error_count = 0u8;
+                let mut warning_count = 0u8;
+                diagnostics.iter().for_each(|d| match d.severity.unwrap() {
+                    lsp_types::DiagnosticSeverity::ERROR => error_count += 1,
+                    lsp_types::DiagnosticSeverity::WARNING => warning_count += 1,
+                    _ => {}
+                });
                 diagnostics.iter().for_each(|d: &lsp_types::Diagnostic| {
                     let code = match d.code.as_ref().unwrap() {
                         lsp_types::NumberOrString::String(s) => s,

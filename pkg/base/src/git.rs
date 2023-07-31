@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn stringify(stdout: Vec<u8>) -> Result<String, Box<dyn std::error::Error + Sync + Send>> {
     let string = String::from_utf8(stdout)?;
@@ -41,11 +41,8 @@ pub(crate) fn to_path(
 /// for paths under .git/worktrees/<name>/, returns the path to (./git/, .)
 /// for paths under .git/modules/<name>/, returns (., .)
 /// for paths in a submodule worktree, returns the path to root .git/modules/<name>/ dir
-pub fn get_worktree_root(
-    path: &PathBuf,
-) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
-    // let mut path = to_path(url)?;
-    let mut path = path.clone();
+pub fn get_worktree_root(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error + Sync + Send>> {
+    let mut path = path.to_path_buf();
     while !path.is_dir() {
         if !path.pop() {
             // ^no more parent directories
