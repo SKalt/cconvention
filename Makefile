@@ -1,5 +1,5 @@
 # FIXME: this build process is pretty convoluted. It should be simplified.
-.PHONY: all help server client-js client bin tmLanguage vsix repl never
+.PHONY: all help server client-js client bin tmLanguage vsix repl never test
 all: bin vsix
 
 help:
@@ -71,3 +71,7 @@ clean-bin:
 
 clean-vsix:
 	rm -f ./editors/code/${VERSION}/dist/conventional-commit-language-server.vsix
+
+test:
+	cargo test --all-features
+	./scripts/run_checks.sh

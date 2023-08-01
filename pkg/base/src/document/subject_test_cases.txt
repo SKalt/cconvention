@@ -71,7 +71,7 @@ ttttRmmmmmmmmmmmmmmmmm
 type!(scope) : message
 ttttRmmmmmmmmmmmmmmmmm
 ty pe!(scope): message
-tttttRmmmmmmmmmmmmmmmm
+tttssssssssssRmmmmmmmm
 type(!): message
 ttttsssRmmmmmmmm
 type!(): message
