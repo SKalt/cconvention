@@ -1,0 +1,2 @@
+examples/trailers.msg:8:1	Warning	footer_leading_blank	Missing blank line before trailers.
+

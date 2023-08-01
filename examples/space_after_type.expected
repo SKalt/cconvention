@@ -1,0 +1,3 @@
+examples/space_after_type.msg:1:1	Error	INVALID	Type contains whitespace.
+examples/space_after_type.msg:1:1	Hint	type_enum	Type "feat " is not in (feat, fix, docs, style, perf, test, build, chore, ci, refactor, revert, temp).
+

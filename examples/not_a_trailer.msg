@@ -1,4 +1,4 @@
-type(scope): message
+feat(scope): message
 
 # comment
 simple body
