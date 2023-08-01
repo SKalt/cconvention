@@ -30,7 +30,13 @@ pub trait LintConfig {
     fn lint(&self, doc: &GitCommitDocument) -> Vec<lsp_types::Diagnostic> {
         log_debug!("linting document: {}", doc.code);
         let mut diagnostics = doc.get_mandatory_lints();
-        log_debug!("mandatory diagnostics: {:?}", diagnostics);
+        log_debug!(
+            "mandatory diagnostics: {:?}",
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_ref().unwrap())
+                .collect::<Vec<_>>()
+        );
         // let code_map = construct_default_lint_tests_map(self);
         // for code in self.enabled_lint_codes() {}
         diagnostics.extend(

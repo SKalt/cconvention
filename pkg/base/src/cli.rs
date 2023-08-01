@@ -1,6 +1,11 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::{config::ConfigStore, document::GitCommitDocument, git::git};
+use crate::{
+    config::{Config, ConfigStore},
+    document::GitCommitDocument,
+    git::git,
+};
 #[cfg(feature = "tracing")]
 use atty::{self, Stream};
 use clap::{Arg, ArgAction, Command};
@@ -15,7 +20,92 @@ const SENTRY_DSN: Option<&'static str> = std::option_env!("SENTRY_DSN");
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 /// the version of the pkg that is getting compiled
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-// CARGO_BIN_NAME
+
+pub fn serve<Cfg: ConfigStore>(
+    cfg: Cfg,
+    sub_matches: &clap::ArgMatches,
+    capabilities: &lsp_types::ServerCapabilities,
+) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    let mut server = if sub_matches.get_flag("stdio") {
+        crate::server::Server::from_stdio(cfg)
+    } else if sub_matches.get_flag("tcp") {
+        crate::server::Server::from_tcp(cfg, 9999)
+    } else {
+        unreachable!()
+    };
+    server.init(capabilities)?.serve()?;
+    log_info!("language server terminated");
+    return Ok(());
+}
+
+pub fn check(
+    cfg: Arc<dyn Config>,
+    sub_matches: &clap::ArgMatches,
+) -> Result<(String, u8, u8), Box<dyn std::error::Error + Sync + Send>> {
+    span!(tracing::Level::INFO, "check");
+    let mut result = String::new();
+    let mut error_count = 0u8;
+    let mut warning_count = 0u8;
+    let mut write_lint = |group: &str, d: &lsp_types::Diagnostic| {
+        let code = match d.code.as_ref().unwrap() {
+            lsp_types::NumberOrString::String(s) => s,
+            _ => panic!("expected code to be a string"),
+        };
+        let start_line = d.range.start.line + 1;
+        let start_column = d.range.start.character + 1;
+        result.push_str(&format!(
+            "{}:{}:{}\t{:?}\t{}\t{}\n",
+            group,
+            start_line,
+            start_column,
+            d.severity.unwrap(),
+            code,
+            d.message
+        ));
+    };
+    let diagnostics = if let Some(file) = sub_matches.get_one::<PathBuf>("file") {
+        if !file.exists() {
+            return Err(format!("{} does not exist", file.display()).into());
+        }
+        if !file.is_file() {
+            return Err(format!("{} is not a file", file.display()).into());
+        }
+        let group = file.display().to_string();
+        let text = std::fs::read_to_string(&file)?;
+        let doc = GitCommitDocument::new().with_text(text);
+        let diagnostics = cfg.lint(&doc);
+        diagnostics.iter().for_each(|d| write_lint(&group, d));
+        diagnostics
+    } else if let Some(range) = sub_matches.get_one::<String>("range") {
+        let raw_hashes = git(&["log", "--format=%h", range], None)?;
+        let hashes = raw_hashes
+            .lines()
+            .map(|line| line.trim())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let mut diagnostics = vec![];
+        // process each hash's commit message
+        for hash in hashes {
+            let message = git(&["log", "-n", "1", "--format=%B", hash], None)?;
+            let doc = GitCommitDocument::new().with_text(message);
+            let diagnostics_for_hash = cfg.lint(&doc);
+            diagnostics_for_hash
+                .iter()
+                .for_each(|d| write_lint(&hash, d));
+            diagnostics.extend(diagnostics_for_hash);
+        }
+        diagnostics
+    } else {
+        unreachable!()
+    };
+    diagnostics.iter().for_each(|d| match d.severity.unwrap() {
+        lsp_types::DiagnosticSeverity::ERROR => error_count += 1,
+        lsp_types::DiagnosticSeverity::WARNING => warning_count += 1,
+        _ => {}
+    });
+    Ok((result, error_count, warning_count))
+}
+
 pub fn cli<F, Cfg: ConfigStore>(
     init: F,
     capabilities: &lsp_types::ServerCapabilities,
@@ -89,106 +179,19 @@ where
                 .arg(Arg::new("range").short('r').help("A git revision range to check.")),
         ).subcommand_required(true);
     match cmd.get_matches().subcommand() {
-        Some(("serve", sub_matches)) => {
-            let cfg = init()?;
-            let mut server = if sub_matches.get_flag("stdio") {
-                crate::server::Server::from_stdio(cfg)
-            } else if sub_matches.get_flag("tcp") {
-                crate::server::Server::from_tcp(cfg, 9999)
-            } else {
-                unreachable!()
-            };
-            server.init(capabilities)?.serve()?;
-            log_info!("language server terminated");
-            return Ok(());
-        }
+        Some(("serve", sub_matches)) => return serve(init()?, sub_matches, capabilities),
         Some(("check", sub_matches)) => {
             // TODO: use a well-known format rather than whatever this is
             // see https://eslint.org/docs/latest/use/formatters/ for inspiration
-            let cfg = init()?.get(None)?;
-            if let Some(file) = sub_matches.get_one::<PathBuf>("file") {
-                if !file.exists() {
-                    return Err(format!("{} does not exist", file.display()).into());
-                }
-                if !file.is_file() {
-                    return Err(format!("{} is not a file", file.display()).into());
-                }
-                let text = std::fs::read_to_string(&file)?;
-                let doc = GitCommitDocument::new()
-                        // .with_url(&lsp_types::Url::from_file_path(&file).map_err(|_| {
-                        //     format!("unable to construct url from {}", file.display())
-                        // })?)
-                        .with_text(text);
-                let diagnostics = cfg.lint(&doc);
-                let mut error_count = 0u8;
-                let mut warning_count = 0u8;
-                diagnostics.iter().for_each(|d| match d.severity.unwrap() {
-                    lsp_types::DiagnosticSeverity::ERROR => error_count += 1,
-                    lsp_types::DiagnosticSeverity::WARNING => warning_count += 1,
-                    _ => {}
-                });
-                diagnostics.iter().for_each(|d: &lsp_types::Diagnostic| {
-                    let code = match d.code.as_ref().unwrap() {
-                        lsp_types::NumberOrString::String(s) => s,
-                        _ => panic!("expected code to be a string"),
-                    };
-                    let start_line = d.range.start.line + 1;
-                    let start_column = d.range.start.character + 1;
-                    println!(
-                        "{}\t{:?}:{}:{}\t{}\t{}", // TODO: colorize if a tty
-                        &file.display(),
-                        d.severity.unwrap(),
-                        start_line,
-                        start_column,
-                        &code,
-                        d.message,
-                    );
-                });
-                println!("{} errors, {} warnings", error_count, warning_count)
-            } else if let Some(range) = sub_matches.get_one::<String>("range") {
-                let raw_hashes = git(&["log", "--format=%h", range], None)?;
-                let hashes = raw_hashes
-                    .lines()
-                    .map(|line| line.trim())
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>();
-                let mut diagnostics = vec![];
-                // process each hash's commit message
-                for hash in hashes {
-                    let message = git(&["log", "-n", "1", "--format=%B", hash], None)?;
-                    let doc = GitCommitDocument::new().with_text(message);
-                    let diagnostics_for_hash = cfg.lint(&doc);
-                    diagnostics_for_hash
-                        .iter()
-                        .for_each(|d: &lsp_types::Diagnostic| {
-                            let code = match d.code.as_ref().unwrap() {
-                                lsp_types::NumberOrString::String(s) => s,
-                                _ => panic!("expected code to be a string"),
-                            };
-                            println!(
-                                "{}\t{:?}\t{}\t{}", // TODO: colorize if a tty
-                                hash,
-                                d.severity.unwrap(),
-                                &code,
-                                d.message,
-                            );
-                        });
-                    diagnostics.extend(diagnostics_for_hash);
-                }
-                let error_count = diagnostics
-                    .iter()
-                    .filter(|d| d.severity.unwrap() == lsp_types::DiagnosticSeverity::ERROR)
-                    .count();
-                let warning_count = diagnostics
-                    .iter()
-                    .filter(|d| d.severity.unwrap() == lsp_types::DiagnosticSeverity::WARNING)
-                    .count();
-                println!("{} errors, {} warnings", error_count, warning_count);
-                if error_count > 0 {
-                    return Err("errors found".into());
-                }
+            let (message, error_count, warning_count) = check(init()?.get(None)?, sub_matches)?;
+            if !message.is_empty() {
+                println!("{}", message);
             }
-            return Ok(());
+            if error_count == 0 {
+                return Ok(());
+            } else {
+                return Err(format!("{} errors, {} warnings", error_count, warning_count).into());
+            }
         }
         Some((sub_command, _)) => {
             return Err(format!("unexpected subcommand {}", sub_command).into())
@@ -196,3 +199,5 @@ where
         None => unreachable!(),
     };
 }
+
+// TODO: use snapshot tests of check() output

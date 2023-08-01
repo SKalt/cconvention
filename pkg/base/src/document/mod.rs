@@ -24,7 +24,10 @@ lazy_static! {
 
 fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
     for (number, line) in code.lines().enumerate() {
-        if line.bytes().next() != Some(b'#') {
+        if !line.is_empty()
+            && line.bytes().next() != Some(b'#')
+            && line.chars().any(|c| !c.is_whitespace())
+        {
             return Some((line, number));
         }
     }
