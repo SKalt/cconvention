@@ -78,26 +78,21 @@ impl base::config::ConfigStore for ConfigStore_ {
         for path in paths {
             // since we're looking in ${root}/.config/ and ${root}, grab the parent and grandparent dirs
             // shouldn't panic even if the repo root is located in /
-            let worktree_root = path
-                .parent()
-                .map(|parent| {
-                    let parent: PathBuf = parent.into();
-                    if self.dirs.contains_key(&parent) {
-                        Some(parent)
+            let worktree_root = path.parent().and_then(|parent| {
+                let parent: PathBuf = parent.into();
+                if self.dirs.contains_key(&parent) {
+                    Some(parent)
+                } else if let Some(grandparent) = parent.parent() {
+                    let grandparent: PathBuf = grandparent.into();
+                    if self.dirs.contains_key(&grandparent) {
+                        Some(grandparent)
                     } else {
-                        if let Some(grandparent) = parent.parent() {
-                            let grandparent: PathBuf = grandparent.into();
-                            if self.dirs.contains_key(&grandparent) {
-                                Some(grandparent)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
+                        None
                     }
-                })
-                .flatten();
+                } else {
+                    None
+                }
+            });
             if let Some(worktree_root) = worktree_root {
                 log_debug!(
                     "invalidating config cache for {:?} with worktree root {:?}",

@@ -2,11 +2,14 @@ use super::Severity;
 use base::log_debug;
 use indexmap::IndexMap;
 use serde::Deserialize;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use toml;
 
 fn get_config_dir(
-    repo_root: &PathBuf,
+    repo_root: &Path,
 ) -> Result<Option<PathBuf>, Box<dyn std::error::Error + Sync + Send>> {
     let config_dir: PathBuf = repo_root.join(".config");
     if !config_dir.exists() {
@@ -20,7 +23,7 @@ fn get_config_dir(
 }
 
 fn get_file(
-    config_dir: &PathBuf,
+    config_dir: &Path,
     ext: &str,
 ) -> Result<Option<PathBuf>, Box<dyn std::error::Error + Sync + Send>> {
     let config_file = config_dir.join(format!("commit_convention.{ext}"));
@@ -90,7 +93,7 @@ fn from_json(
 }
 
 pub(crate) fn get_config(
-    repo_root: &PathBuf,
+    repo_root: &Path,
 ) -> Result<Option<(JsonConfig, PathBuf)>, Box<dyn std::error::Error + Sync + Send>> {
     if let Some(config_dir) = get_config_dir(repo_root)? {
         #[cfg(feature = "toml_config")]

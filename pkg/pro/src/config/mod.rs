@@ -10,14 +10,19 @@ use base::{
 };
 use indexmap::IndexMap;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 // TODO: move json_ish behind a feature flag
 pub(crate) mod json_ish;
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Severity {
     Error,
+    #[default]
     Warning,
     Info,
     Hint,
@@ -33,11 +38,6 @@ impl From<Severity> for Option<lsp_types::DiagnosticSeverity> {
             Severity::Hint => Some(lsp_types::DiagnosticSeverity::HINT),
             Severity::None => None,
         }
-    }
-}
-impl Default for Severity {
-    fn default() -> Self {
-        Severity::Warning
     }
 }
 
@@ -58,7 +58,7 @@ const MAX_BODY_LINE_LENGTH: u16 = 100;
 
 impl Config {
     /// Load a config from the given worktree directory, adding default types, lints, & lint severity.
-    pub fn new(worktree_root: &PathBuf) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn new(worktree_root: &Path) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         use base::document::linting;
         // IDEA: draw lint-fn closures from a long-lived default store
         let (json, src) = json_ish::get_config(worktree_root)?
@@ -81,7 +81,7 @@ impl Config {
         };
         let scopes = json.scopes.unwrap_or_default();
         let mut cfg = Config {
-            worktree_root: worktree_root.clone(),
+            worktree_root: worktree_root.to_path_buf(),
             enabled_lints,
             types: types.clone(), // TODO: figure out how to re-use cfg.types in enum-checking lint-fn
             scopes: scopes.clone(), // TODO: figure out how to re-use cfg.scopes in enum-checking lint-fn
@@ -100,7 +100,7 @@ impl Config {
             linting::default::TYPE_ENUM.to_string(),
             Arc::new(move |doc: &GitCommitDocument| {
                 let mut lints = vec![];
-                doc.subject.as_ref().map(|header| {
+                if let Some(header) = doc.subject.as_ref() {
                     let type_text = header.type_text();
                     if types.get(type_text).is_none() {
                         let mut lint = make_line_diagnostic(
@@ -122,7 +122,7 @@ impl Config {
                         ));
                         lints.push(lint);
                     }
-                });
+                };
                 lints
             }),
         );
@@ -137,38 +137,32 @@ impl Config {
                 "scope_enum".to_string(),
                 Arc::new(move |doc| -> Vec<lsp_types::Diagnostic> {
                     let mut lints: Vec<lsp_types::Diagnostic> = vec![];
-                    lints.extend(
-                        doc.subject
-                            .as_ref()
-                            .map(|header| {
-                                let scope_text = header.scope_text();
-                                if scopes.contains_key(scope_text) {
-                                    None
-                                } else {
-                                    let start = header.type_text().chars().count();
-                                    let end = start + scope_text.chars().count();
-                                    let mut lint = make_line_diagnostic(
-                                        format!(
-                                            "Scope {:?} is not in ({}).",
-                                            scope_text,
-                                            scopes
-                                                .keys()
-                                                .map(|t| t.to_owned())
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        ),
-                                        header.line_number as usize,
-                                        start as u32,
-                                        end as u32,
-                                    );
-                                    lint.code = Some(lsp_types::NumberOrString::String(
-                                        SCOPE_ENUM.to_string(),
-                                    ));
-                                    Some(lint)
-                                }
-                            })
-                            .flatten(),
-                    );
+                    lints.extend(doc.subject.as_ref().and_then(|header| {
+                        let scope_text = header.scope_text();
+                        if scopes.contains_key(scope_text) {
+                            None
+                        } else {
+                            let start = header.type_text().chars().count();
+                            let end = start + scope_text.chars().count();
+                            let mut lint = make_line_diagnostic(
+                                format!(
+                                    "Scope {:?} is not in ({}).",
+                                    scope_text,
+                                    scopes
+                                        .keys()
+                                        .map(|t| t.to_owned())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                                header.line_number as usize,
+                                start as u32,
+                                end as u32,
+                            );
+                            lint.code =
+                                Some(lsp_types::NumberOrString::String(SCOPE_ENUM.to_string()));
+                            Some(lint)
+                        }
+                    }));
                     lints
                 }),
             );
