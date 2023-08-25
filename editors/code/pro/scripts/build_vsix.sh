@@ -1,0 +1,1 @@
+../../base/scripts/build_vsix.sh

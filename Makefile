@@ -56,14 +56,16 @@ client: client-js tmLanguage ./editors/code/${VERSION}/dist/conventional-commit-
 
 	cp ./target/${PROFILE}/${VERSION}_language_server ./editors/code/${VERSION}/dist/conventional-commit-language-server
 
-vsix: \
-	./editors/code/${VERSION}/dist/conventional-commit-language-server.vsix \
-	./editors/code/${VERSION}/dist/main.min.common.js \
-	./editors/code/${VERSION}/src/tmLanguage.json \
-	./target/${PROFILE}/${VERSION}_language_server
+vsix: ./editors/code/${VERSION}/dist/conventional-commit-language-server.vsix
 
-./editors/code/${VERSION}/dist/conventional-commit-language-server.vsix:
-	cd editors/code/${VERSION} && ./scripts/build_vsix.sh
+./editors/code/${VERSION}/dist/conventional-commit-language-server.vsix: \
+	./editors/code/${VERSION}/dist/conventional-commit-language-server \
+	./editors/code/${VERSION}/dist/main.min.common.js \
+	./editors/code/${VERSION}/dist/conventional-commit-language-server \
+	./editors/code/${VERSION}/src/tmLanguage.json \
+	./editors/code/${VERSION}/scripts/build_vsix.sh
+
+	cd editors/code/${VERSION} && PROFILE="${PROFILE}" VERSION="${VERSION}" ./scripts/build_vsix.sh
 
 clean-bin:
 	rm -f ./bin/${VERSION}_language_server
