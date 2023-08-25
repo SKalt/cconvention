@@ -6,6 +6,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+#[cfg(feature = "toml_config")]
 use toml;
 
 fn get_config_dir(
@@ -105,6 +106,7 @@ pub(crate) fn get_config(
             return from_json(config_file).map(Some);
         }
     }
+    #[cfg(feature = "toml_config")]
     if let Some(config_file) = get_file(repo_root, "toml")? {
         return from_toml(config_file).map(Some);
     }
