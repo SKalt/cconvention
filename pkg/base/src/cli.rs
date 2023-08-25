@@ -35,7 +35,8 @@ pub fn serve<Cfg: ConfigStore>(
     };
     server.init(capabilities)?.serve()?;
     log_info!("language server terminated");
-    return Ok(());
+
+    Ok(())
 }
 
 pub fn check(
@@ -71,7 +72,7 @@ pub fn check(
             return Err(format!("{} is not a file", file.display()).into());
         }
         let group = file.display().to_string();
-        let text = std::fs::read_to_string(&file)?;
+        let text = std::fs::read_to_string(file)?;
         let doc = GitCommitDocument::new().with_text(text);
         let diagnostics = cfg.lint(&doc);
         diagnostics.iter().for_each(|d| write_lint(&group, d));
@@ -91,7 +92,7 @@ pub fn check(
             let diagnostics_for_hash = cfg.lint(&doc);
             diagnostics_for_hash
                 .iter()
-                .for_each(|d| write_lint(&hash, d));
+                .for_each(|d| write_lint(hash, d));
             diagnostics.extend(diagnostics_for_hash);
         }
         diagnostics
@@ -179,25 +180,23 @@ where
                 .arg(Arg::new("range").short('r').help("A git revision range to check.")),
         ).subcommand_required(true);
     match cmd.get_matches().subcommand() {
-        Some(("serve", sub_matches)) => return serve(init()?, sub_matches, capabilities),
+        Some(("serve", sub_matches)) => serve(init()?, sub_matches, capabilities),
         Some(("check", sub_matches)) => {
             // TODO: use a well-known format rather than whatever this is
             // see https://eslint.org/docs/latest/use/formatters/ for inspiration
             let (message, error_count, warning_count) = check(init()?.get(None)?, sub_matches)?;
             if !message.is_empty() {
                 println!("{}", message);
-            }
+            };
             if error_count == 0 {
-                return Ok(());
+                Ok(())
             } else {
-                return Err(format!("{} errors, {} warnings", error_count, warning_count).into());
+                Err(format!("{} errors, {} warnings", error_count, warning_count).into())
             }
         }
-        Some((sub_command, _)) => {
-            return Err(format!("unexpected subcommand {}", sub_command).into())
-        }
+        Some((sub_command, _)) => Err(format!("unexpected subcommand {}", sub_command).into()),
         None => unreachable!(),
-    };
+    }
 }
 
 // TODO: use snapshot tests of check() output

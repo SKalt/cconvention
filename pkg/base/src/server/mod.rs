@@ -517,7 +517,6 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                 // Using <= since the cursor should still trigger completions if it's at the end of a range
                 let type_len = subject.type_text().chars().count();
                 let scope_len = subject.scope_text().chars().count();
-                let rest_len = subject.rest_text().chars().count();
                 if character_index <= type_len {
                     // handle type completions
                     result.extend(config::as_completion(
@@ -536,10 +535,9 @@ impl<Cfg: ConfigStore> Server<Cfg> {
                     if let Some(first) = result.first_mut() {
                         first.preselect = Some(true);
                     }
-                } else if character_index <= rest_len + scope_len + type_len {
-                    // TODO: suggest either a bang or a colon
                 } else {
                     // in the subject message; no completions
+                    // TODO: suggest either a bang or a colon if character_index <= rest_len + scope_len + type_len
                 }
             }
         } else {

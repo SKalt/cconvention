@@ -14,6 +14,13 @@ impl DefaultConfigStore {
         DefaultConfigStore(DefaultConfig::new())
     }
 }
+
+impl Default for DefaultConfigStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl base::config::ConfigStore for DefaultConfigStore {
     /// always returns a clone of the same DefaultConfig for each worktree_root
     fn get(
@@ -42,6 +49,12 @@ impl DefaultConfig {
             worktree_root: None,
             tests: construct_default_lint_tests_map(50),
         }
+    }
+}
+
+impl Default for DefaultConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
