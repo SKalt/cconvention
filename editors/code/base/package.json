@@ -1,10 +1,11 @@
 {
   "name": "git-conventional-commit-ls-basic",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Highlighting, linting, and completion for conventional commit messages",
   "engines": {
     "vscode": "^1.77.0"
   },
+  "publisher": "kalt-dot-cloud",
   "repository": {
     "type": "git",
     "url": "https://github.com/skalt/cconvention.git",

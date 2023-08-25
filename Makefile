@@ -65,6 +65,7 @@ vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
 	./editors/code/${VERSION}/dist/main.min.common.js \
 	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/src/tmLanguage.json \
+	./editors/code/${VERSION}/package.json \
 	./editors/code/${VERSION}/scripts/build_vsix.sh
 
 	cd editors/code/${VERSION} && PROFILE="${PROFILE}" VERSION="${VERSION}" ./scripts/build_vsix.sh
