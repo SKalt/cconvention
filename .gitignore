@@ -1,5 +1,7 @@
 .direnv
 .env
+.lycheecache
 target
 node_modules
 dist
+bin
