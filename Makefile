@@ -23,9 +23,11 @@ server: ./target/${PROFILE}/${VERSION}_language_server
 # TODO: generate cargo build timing, bloat metrics
 ./target/debug/${VERSION}_language_server: never
 	cargo build --all-features --bin ${VERSION}_language_server --timings
+	touch -m ./target/debug/${VERSION}_language_server
 
 ./target/release/${VERSION}_language_server: never
 	cargo build --all-features --release --bin ${VERSION}_language_server --timings
+	touch -m ./target/release/${VERSION}_language_server
 
 bin: ./bin/cconvention
 ./bin/cconvention: ./target/${PROFILE}/${VERSION}_language_server
