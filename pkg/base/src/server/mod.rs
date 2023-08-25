@@ -722,10 +722,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         let commit = commit.unwrap();
         Ok(lsp_server::Response {
             id: id.clone(),
-            result: Some(
-                serde_json::to_value(commit.get_links(commit.worktree_root.clone().unwrap()))
-                    .unwrap(),
-            ),
+            result: Some(serde_json::to_value(commit.get_links()).unwrap()),
             error: None,
         })
     }

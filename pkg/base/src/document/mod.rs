@@ -233,7 +233,7 @@ impl GitCommitDocument {
         }
         line_numbers
     }
-    pub(crate) fn get_links(&self, repo_root: PathBuf) -> Vec<lsp_types::DocumentLink> {
+    pub(crate) fn get_links(&self) -> Vec<lsp_types::DocumentLink> {
         let mut cursor = tree_sitter::QueryCursor::new();
         let matches = cursor.matches(
             &FILE_QUERY,
@@ -244,7 +244,12 @@ impl GitCommitDocument {
         for m in matches {
             for c in m.captures {
                 let text = self.slice_of(c.node).to_string();
-                let path = repo_root.join(text);
+                let path = self
+                    .worktree_root
+                    .clone()
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(text);
                 let range = c.node.range();
                 result.push(lsp_types::DocumentLink {
                     range: lsp_types::Range {
