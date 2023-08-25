@@ -7,7 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/skalt/conventional-commit-language-server.git",
+    "url": "https://github.com/skalt/cconvention.git",
     "directory": "editors/code/base"
   },
   "main": "./dist/main.min.common.js",
@@ -51,7 +51,7 @@
     "onLanguage:git-commit"
   ],
   "author": "Steven Kalt <steven@kalt.cloud>",
-  "homepage": "https://github.com/skalt/conventional-commit-language-server#TODO",
+  "homepage": "https://github.com/skalt/cconvention#TODO",
   "license": "SEE LICENSE IN ./LICENSE.md",
   "devDependencies": {
     "@types/node": "^18.17.11",

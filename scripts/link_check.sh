@@ -7,8 +7,8 @@ done
 
 to_exclude=(
   '--exclude=.*\.ingest\.sentry\.io'
-  '--exclude=https://indiecc.com/~skalt/conventional-commit-language-server'
-  '--exclude=https://github.com/skalt/conventional-commit-language-server'
+  '--exclude=https://indiecc.com/~skalt/cconvention'
+  '--exclude=https://github.com/skalt/cconvention'
 )
 
 lychee --exclude-mail --timeout=5 --cache "${to_lint[@]}" "${to_exclude[@]}"

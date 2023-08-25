@@ -1,8 +1,8 @@
-`git-cc` is offered under the Indie Code Catalog Standard Deal, version 4.0.1 or higher.
+`cconvention` is offered under the Indie Code Catalog Standard Deal, version 4.0.1 or higher.
 The text of the deal is available at https://indiecc.com/deal/4.0.1.
 The [Indie Code Catalog Standard Deal](#indie-code-catalog-standard-deal), [Free License](#indie-code-catalog-free-license), and [Paid License](#indie-code-catalog-paid-license) and are all copied below.
 
-You can buy a paid license at [https://indiecc.com/~skalt/conventional-commit-language-server](https://indiecc.com/~skalt/conventional-commit-language-server).
+You can buy a paid license at [https://indiecc.com/~skalt/cconvention](https://indiecc.com/~skalt/cconvention).
 
 ---
 

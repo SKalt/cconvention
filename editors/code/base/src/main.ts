@@ -7,7 +7,7 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
-const DEFAULT_SERVER = "conventional-commit-language-server";
+const DEFAULT_SERVER = "cconvention";
 let client: LanguageClient; // FIXME: avoid global variable
 // FIXME: check for server on $PATH, then resolve bundled server
 function getServer(context: ExtensionContext): string {

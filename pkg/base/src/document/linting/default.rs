@@ -4,7 +4,7 @@ use crop::RopeSlice;
 
 use super::{utils, GitCommitDocument, INVALID};
 
-pub const ID: &str = "conventional-commit-language-server";
+pub const ID: &str = "cconvention";
 // const lint codes
 /// https://commitlint.js.org/#/reference-rules?id=header-length
 /// note that the header is the first non-comment, non-blank line

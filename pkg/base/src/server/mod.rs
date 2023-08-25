@@ -166,7 +166,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         let response = InitializeResult {
             capabilities: cap.clone(),
             server_info: Some(ServerInfo {
-                name: "conventional-commit-language-server".to_owned(),
+                name: "cconvention".to_owned(),
                 // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
                 version: std::option_env!("CARGO_PKG_VERSION").map(|s| s.to_string()),
             }),

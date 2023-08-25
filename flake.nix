@@ -27,7 +27,7 @@
               cargoLock = {
                 lockFile = ./Cargo.lock;
               };
-              pname = "conventional-commit-language-server";
+              pname = "cconvention";
               version = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml))."package".version;
               src = ./.;
               # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.

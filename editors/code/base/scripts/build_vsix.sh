@@ -15,9 +15,9 @@ repo_root="$(cd "${this_dir}/../../../.." && pwd)"
 build_vsix() {
   variant="${VERSION}_language_server"
   dist_dir="${repo_root}/editors/code/${VERSION}/dist"
-  vsix_target="$dist_dir/conventional-commit-language-server.vsix"
+  vsix_target="$dist_dir/cconvention.vsix"
 
-  cp "$repo_root/target/$PROFILE/${variant}" "$dist_dir/conventional-commit-language-server"
+  cp "$repo_root/target/$PROFILE/${variant}" "$dist_dir/cconvention"
   rm -f "$vsix_target" # just in case
   # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
   set +o pipefail

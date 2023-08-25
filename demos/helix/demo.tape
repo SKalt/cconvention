@@ -6,8 +6,8 @@ Hide
 
 Require git
 Require hx
-Require conventional-commit-language-server
-# FIXME: figure out how to alias build outputs as conventional-commit-language-server
+Require cconvention
+# FIXME: figure out how to alias build outputs as cconvention
 
 Type@0ms "temp_dir=$(./setup.sh)"
 Enter
