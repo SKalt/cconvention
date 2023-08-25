@@ -79,6 +79,10 @@
               helix
               vim
               neovim
+
+              # other
+              lychee
+              shellcheck
             ];
         };
       }

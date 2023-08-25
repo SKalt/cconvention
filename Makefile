@@ -1,5 +1,5 @@
 # FIXME: this build process is pretty convoluted. It should be simplified.
-.PHONY: all help server client-js client bin tmLanguage vsix repl never test
+.PHONY: all help server client-js client bin tmLanguage vsix repl never test lint
 all: bin vsix
 
 help:
@@ -75,3 +75,8 @@ clean-vsix:
 test:
 	cargo test --all-features
 	./scripts/run_checks.sh
+
+lint:
+	cargo clippy --all-features
+	./scripts/link_check.sh
+	./scripts/shellcheck.sh
