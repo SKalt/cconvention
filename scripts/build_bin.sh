@@ -37,7 +37,8 @@ build_bin() {
   release) cargo_args="--release" ;;
   esac
 
-  local objcopy="$(find_objcopy)"
+  local objcopy
+  objcopy="$(find_objcopy)"
   log_dbug "using objcopy: $objcopy"
   local bin_path="target/${target}/${profile}/${version}_language_server"
   log_info "building ${bin_path}"
