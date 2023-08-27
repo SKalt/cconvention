@@ -51,6 +51,8 @@ jobs:
             pkg/pro
       - run: cargo clippy --all-features
       - run: cargo test --all-features
+      - run: brew install binutils
+        if: ${{matrix.os}} == 'macos-latest'
       - name: "build the binary for ${{matrix.target}}"
         run: |
           ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
@@ -78,7 +80,7 @@ jobs:
         id: built-base-js
         with:
           path: ./editors/code/base/dist/main.min.common.js
-          key: "built-js-for-{{ hashfiles('./editors/code/base/src/*.ts', 'editors/code/base/pnpm-lock.yaml') }}"
+          key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
       # TODO: ensure the tmLanguage.json is up-to-date with the _
       - name: build the JS if changed
         if: steps.built-base-js.outputs.cache-hit != 'true'
