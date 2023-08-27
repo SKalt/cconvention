@@ -4,7 +4,7 @@ usage() { grep '^###' "$0" | sed 's/^### //g; s/^###//g'; }
 log_file="${LOG_FILE:-}"
 if [ ! -f "$log_file" ]; then
   set -e
-  log_file="$(mktemp --tmpdir "$(basename "$0")_XXXXXX.log")"
+  log_file="$(mktemp -t "$(basename "$0")_XXXXXX.log")"
   set +e
 fi
 export log_file

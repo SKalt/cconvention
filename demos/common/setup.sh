@@ -4,7 +4,7 @@ if [[ "${BASH_SOURCE[0]}" = */* ]]; then common_dir="${BASH_SOURCE[0]%/*}"; else
 common_dir="$(cd "$common_dir" && pwd)"
 repo_root="$(cd "$common_dir/../../" && pwd)"
 export repo_root
-temp_dir="$(mktemp -d --tmpdir "demo.XXXX")"
+temp_dir="$(mktemp -t "demo.XXXX")"
 export temp_dir
 {
   echo "export PATH='$PATH'"
