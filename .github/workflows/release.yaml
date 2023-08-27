@@ -74,7 +74,7 @@ jobs:
             ./editors/code/pro/pnpm-lock.yaml
       # TODO: check JS/TS/JSON formatting with Prettier
       - name: cache the built JS
-        uses: actions/cache@3
+        uses: actions/cache@v3
         id: built-base-js
         with:
           path: ./editors/code/base/dist/main.min.common.js

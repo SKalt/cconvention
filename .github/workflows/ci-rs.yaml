@@ -31,7 +31,7 @@ jobs:
   #     #     title: Link Checker Report
   #     #     content-filepath: ./lychee/out.md
   #     #     labels: report, automated issue
-  #     # uses: ludeeus/action-shellcheck@2
+  #     # uses: ludeeus/action-shellcheck@v2
   unitTests:
     name: unit tests
     runs-on: ubuntu-latest
