@@ -54,6 +54,7 @@ jobs:
       - if: matrix.os == 'macos-latest'
         run: brew install binutils
       - name: "build the binary for ${{matrix.target}}"
+        shell: bash
         run: |
           ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
 
@@ -83,6 +84,7 @@ jobs:
           key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
       # TODO: ensure the tmLanguage.json is up-to-date with the _
       - name: build the JS if changed
+        shell: bash
         if: steps.built-base-js.outputs.cache-hit != 'true'
         working-directory: ./editors/code/base
         run: |
@@ -90,6 +92,7 @@ jobs:
       # TODO: move building the JS bundle and checking the tmLanguage to its own job?
       # Possible minor data-race -- should be ok due to deterministic JS-build outputs
       - name: build the ${{ matrix.vscode-target }} vsix
+        shell: bash
         run: |
           ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.vscode-target }}
       - name: upload ${{ matrix.target }} vsix

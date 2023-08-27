@@ -62,10 +62,6 @@ build_vsix() {
   rm -f "$vsix_path" # just in case
   # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
   log_info "building $vsix_path"
-  log_dbug "target: $target"
-  log_dbug "profile: $profile"
-  log_dbug "version: $version"
-  log_dbug "variant: $variant"
 
   set +o pipefail
   # ^ yes emits error code 141 when vsce exits and breaks the pipe
@@ -99,6 +95,11 @@ main() {
   version="$(parse_version "$version")"
   target="$(parse_vsce_target "$target")"
   profile="$(parse_profile "$profile")"
+
+  log_dbug "profile: $profile"
+  log_dbug "version: $version"
+  log_dbug "target: $target"
+  log_dbug "repo_root: $repo_root"
 
   build_vsix "$version" "$profile" "$target" "$repo_root"
 
