@@ -48,7 +48,6 @@ jobs:
           workspaces: |
             pkg/base
             pkg/pro
-      - run: cargo fmt --check
       - run: cargo clippy --all-features
       - run: cargo test --all-features
       - name: "build the binary for ${{matrix.target}}"
