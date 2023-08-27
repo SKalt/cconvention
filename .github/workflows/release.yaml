@@ -1,4 +1,4 @@
-name: Rust CI
+name: release?
 on:
   workflow_dispatch: # for manual debugging
   push:
