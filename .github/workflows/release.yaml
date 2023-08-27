@@ -1,0 +1,97 @@
+name: Rust CI
+on:
+  workflow_dispatch: # for manual debugging
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  publish:
+    strategy:
+      matrix:
+        include:
+          # each `target` is picked from `rustup target list` and each
+          # `vscode-target` is drawn from `vsce publish --help`
+          # x86 windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            vscode-target: win32-x64
+          # x86 linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            vscode-target: linux-x64
+          # TODO: arm64 linux
+          # x86 macos
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            vscode-target: darwin-x64x
+          # arm64 macos
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            vscode-target: darwin-arm64
+
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # shallow clone for speed
+
+      - name: "Install rust toolchain including ${{ matrix.target }}"
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+          rustup component add rust-src
+      - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
+        with:
+          key: ${{ matrix.target }}
+          workspaces: |
+            pkg/base
+            pkg/pro
+      - run: cargo fmt --check
+      - run: cargo clippy --all-features
+      - run: cargo test --all-features
+      - name: "build the binary for ${{matrix.target}}"
+        run: |
+          ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
+
+      - name: upload ${{ matrix.target }} bin
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-base-${{matrix.target}}
+          path: ./target/release/base_language_server
+
+      # build the vscode extension
+      - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
+        with:
+          version: 8
+      - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
+        with:
+          node-version: 18
+          cache: "pnpm"
+          cache-dependency-path: |
+            ./editors/code/base/pnpm-lock.yaml
+            ./editors/code/pro/pnpm-lock.yaml
+      # TODO: check JS/TS/JSON formatting with Prettier
+      - name: cache the built JS
+        uses: actions/cache@3
+        id: built-base-js
+        with:
+          path: ./editors/code/base/dist/main.min.common.js
+          key: "built-js-for-{{ hashfiles('./editors/code/base/src/*.ts', 'editors/code/base/pnpm-lock.yaml') }}"
+      # TODO: ensure the tmLanguage.json is up-to-date with the _
+      - name: build the JS if changed
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+        working-directory: ./editors/code/base
+        run: |
+          PATH=${PWD}/node_modules/.bin:$PATH ./scripts/build_js.sh
+      # TODO: move building the JS bundle and checking the tmLanguage to its own job?
+      # Possible minor data-race -- should be ok due to deterministic JS-build outputs
+      - name: build the ${{ matrix.vscode-target }} vsix
+        run: |
+          ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.vscode-target }}
+      - name: upload ${{ matrix.target }} vsix
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.vscode-target }}.vsix

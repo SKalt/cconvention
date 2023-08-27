@@ -1,5 +1,5 @@
 pub mod linting;
-pub(crate) mod lookaround;
+mod lookaround;
 pub(crate) mod subject;
 use std::path::PathBuf;
 
@@ -8,10 +8,10 @@ use lookaround::{find_byte_offset, to_point};
 use subject::Subject;
 
 use crate::{
-    document::linting::INVALID,
     git::{get_worktree_root, to_path},
     LANGUAGE,
 };
+use linting::INVALID;
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =

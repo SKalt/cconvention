@@ -26,7 +26,9 @@ pub const ENABLED_LINTS: &[&str] = &[
     SUBJECT_EMPTY,
     SUBJECT_LEADING_SPACE,
 ];
-pub const MAX_HEADER_LINE_LENGTH: u8 = 50; // from https://git-scm.com/docs/git-commit#_discussion
+/// a suggested number from https://git-scm.com/docs/git-commit#_discussion ;
+/// GitHub also uses this number.
+pub const MAX_HEADER_LINE_LENGTH: u8 = 50;
 
 lazy_static! {
     pub static ref LINT_SEVERITY: HashMap<&'static str, lsp_types::DiagnosticSeverity> = {

@@ -17,34 +17,35 @@
 
       in
       rec {
-        packages = {
-          # For `nix build` & `nix run`:
-          # TODO: base, pro
-          base = pkgs.rustPlatform.buildRustPackage
-            {
-              # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
-              inherit cargoDeps;
-              cargoLock = {
-                lockFile = ./Cargo.lock;
-              };
-              pname = "cconvention";
-              version = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml))."package".version;
-              src = ./.;
-              # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.
-              # > Note that setting cargoLock.lockFile or cargoLock.lockFileContents doesn’t add a Cargo.lock to your src, and a Cargo.lock is still required to build a rust package.
-              # > -- https://nixos.org/manual/nixpkgs/stable/#importing-a-cargo.lock-file
-              # postPatch = ''
-              #   ln -s ${./Cargo.lock} Cargo.lock
-              # '';
+        # TODO: figure out how to build or cross-compile
+        # packages = {
+        #   # For `nix build` & `nix run`:
+        #   # TODO: base, pro
+        #   base = pkgs.rustPlatform.buildRustPackage
+        #     {
+        #       # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
+        #       inherit cargoDeps;
+        #       cargoLock = {
+        #         lockFile = ./Cargo.lock;
+        #       };
+        #       pname = "cconvention";
+        #       version = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml))."package".version;
+        #       src = ./.;
+        #       # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.
+        #       # > Note that setting cargoLock.lockFile or cargoLock.lockFileContents doesn’t add a Cargo.lock to your src, and a Cargo.lock is still required to build a rust package.
+        #       # > -- https://nixos.org/manual/nixpkgs/stable/#importing-a-cargo.lock-file
+        #       # postPatch = ''
+        #       #   ln -s ${./Cargo.lock} Cargo.lock
+        #       # '';
 
-              nativeBuildInputs = with pkgs;
-                [
-                  cargo
-                  clippy
-                  rustc
-                ];
-            };
-        };
+        #       nativeBuildInputs = with pkgs;
+        #         [
+        #           cargo
+        #           clippy
+        #           rustc
+        #         ];
+        #     };
+        # };
         # For `nix develop`:
         devShell = pkgs.mkShell {
           # see https://github.com/NixOS/nixpkgs/issues/52447
@@ -54,7 +55,8 @@
           nativeBuildInputs = with pkgs; [
             cargo
             clippy
-            rustc
+            rustup
+            # rustc: omitted
           ];
           buildInputs = with pkgs;
             [
@@ -62,6 +64,7 @@
               cargo-bloat
               rust-analyzer
               rustfmt
+              cargo-cross
 
               # nix support
               nixpkgs-fmt
@@ -85,6 +88,13 @@
               shellcheck
             ];
         };
+        # From https://github.com/srid/rust-nix-template/blob/50741677232653ec0fb465471ce1ab83e37efb3a/flake.nix#L37
+
+        shellHook = ''
+          # For rust-analyzer 'hover' tooltips to work.
+          export RUST_SRC_PATH=${pkgs.rustPlatform.rustLibSrc}
+        '';
+
       }
     );
 }

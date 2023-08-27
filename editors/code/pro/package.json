@@ -1,6 +1,7 @@
 {
   "name": "git-conventional-commit-ls-base",
   "version": "0.0.1",
+  "packageManager": "pnpm@8.2.0",
   "publisher": "kalt-dot-cloud",
   "description": "Highlighting, linting, and completion for conventional commit messages",
   "engines": {

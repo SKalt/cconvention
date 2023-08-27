@@ -152,9 +152,9 @@ where
                 sentry::ClientOptions {
                     release: sentry::release_name!(),
                     auto_session_tracking: true,
-                    traces_sample_rate: 1.0, // TODO: reduce sampling rate
+                    traces_sample_rate: 0.9, // TODO: reduce sampling rates
                     enable_profiling: true,
-                    profiles_sample_rate: 1.0, // TODO: reduce sampling rate
+                    profiles_sample_rate: 0.9,
                     ..Default::default()
                 },
             ))

@@ -3,10 +3,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 #[cfg(feature = "tracing")]
 use base::config::ENV_PREFIX;
 
-use base::{
-    cli::cli,
-    document::{linting::utils::construct_default_lint_tests_map, GitCommitDocument},
-};
+use base::{cli::cli, document::linting::utils::construct_default_lint_tests_map};
 
 pub struct DefaultConfigStore(DefaultConfig);
 impl DefaultConfigStore {
@@ -33,14 +30,10 @@ impl base::config::ConfigStore for DefaultConfigStore {
     }
 }
 
-// TODO: disabling tracing, error reporting
 #[derive(Clone)]
 pub struct DefaultConfig {
     worktree_root: Option<PathBuf>,
-    tests: HashMap<
-        &'static str,
-        Arc<dyn Fn(&GitCommitDocument) -> Vec<lsp_types::Diagnostic> + 'static>,
-    >,
+    tests: HashMap<&'static str, Arc<base::document::linting::LintFn<'static>>>,
 }
 
 impl DefaultConfig {

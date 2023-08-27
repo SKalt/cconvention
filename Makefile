@@ -13,21 +13,24 @@ help:
 	@echo "  PROFILE: debug (default), release"
 	@echo "  VERSION: base (default), pro"
 PROFILE?=debug
-# allowed values: debug, release
+# ^allowed values: debug, release
+
 VERSION?=base
-# allowed values: pro, base
+# ^allowed values: pro, base
+
+TARGET?=x86_64-unknown-linux-gnu
+# ^allowed values: whatever your `rustup target list` says
 
 never: # used to invalidate non-phony targets (real files) that should always run
 
 server: ./target/${PROFILE}/${VERSION}_language_server
 # TODO: generate cargo build timing, bloat metrics
-./target/debug/${VERSION}_language_server: never
-	cargo build --all-features --bin ${VERSION}_language_server --timings
-	touch -m ./target/debug/${VERSION}_language_server
-
-./target/release/${VERSION}_language_server: never
-	cargo build --all-features --release --bin ${VERSION}_language_server --timings
-	touch -m ./target/release/${VERSION}_language_server
+./target/${PROFILE}/${VERSION}_language_server: never
+	./scripts/build_bin.sh \
+		--profile=${PROFILE} \
+		--version=${VERSION} \
+		--target=${TARGET}
+	touch -m ./target/${PROFILE}/${VERSION}_language_server
 
 bin: ./bin/cconvention
 ./bin/cconvention: ./target/${PROFILE}/${VERSION}_language_server
@@ -63,12 +66,14 @@ vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
 ./editors/code/${VERSION}/dist/cconvention.vsix: \
 	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/dist/main.min.common.js \
-	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/src/tmLanguage.json \
 	./editors/code/${VERSION}/package.json \
-	./editors/code/${VERSION}/scripts/build_vsix.sh
+	./scripts/build_vsix.sh
 
-	cd editors/code/${VERSION} && PROFILE="${PROFILE}" VERSION="${VERSION}" ./scripts/build_vsix.sh
+	./scripts/build_vsix.sh \
+		--profile=${PROFILE} \
+		--version=${VERSION} \
+		--target=${TARGET}
 
 clean-bin:
 	rm -f ./bin/${VERSION}_language_server

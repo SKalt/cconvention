@@ -21,10 +21,7 @@ This includes the names of any published tools, libraries, binaries, or extensio
 ## Command-line Usage
 
 ```sh
-cconvention --help
-```
-
-```sh
+cconvention --help | sed 's/^/# /g'
 # Usage: cconvention <COMMAND>
 #
 # Commands:
@@ -62,11 +59,12 @@ cconvention --help
 
 ## Licensing
 
-This tool comes in two variants -- an open-source edition which you can build upon and use for any purpose, and a source-provided version that
+This tool comes in two variants -- an open-source edition which you can build upon and use for any purpose, and a source-provided version that is governed by a source-provided license.
+Summarized, the source-provided license states:
 
 > To use [this software] to make money or for work, you need to buy a license.
 > If you’re part of a team, everyone on your team who uses the software needs to buy one.
-> You can [try before you buy](./pkg/pro/LICENSE.md#free-trials), to make sure the software works and integrates well with your prototypes.
+> You can [try before you buy](./licenses/LICENSE.indiecc-4.md#free-trials), to make sure the software works and integrates well with your prototypes.
 
 |             Feature              |        OSS        |       Source-provided       |
 | :------------------------------: | :---------------: | :-------------------------: |
@@ -82,9 +80,11 @@ This tool comes in two variants -- an open-source edition which you can build up
   - `pkg/pro/`
   - `editors/*/pro`
 
+If you're ever confused which license applies, check the closest LICENSE.md up the directory tree.
+
 <!-- links -->
 
 [ccs]: https://conventionalcommits.org
 [git-cc]: https://github.com/skalt/git-cc
 [oss]: ./pkg/base/LICENSE.md
-[src-provided]: ./pkg/pro/LICENSE.md
+[src-provided]: ./licenses/LICENSE.indiecc-4.md
