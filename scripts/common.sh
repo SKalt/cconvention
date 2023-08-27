@@ -9,10 +9,19 @@ if [ ! -f "$log_file" ]; then
 fi
 export log_file
 
+is_installed() { command -v "$1" >/dev/null 2>&1; }
+
+require_cli() {
+  if ! is_installed "$1"; then
+    log_errr "missing required CLI: $1"
+    exit 127
+  fi
+}
+
 should_use_color() {
-  test -t 1 &&                      # stdout (device 1) is a tty
-    test -z "${NO_COLOR:-}" &&      # the NO_COLOR variable isn't set
-    command -v tput >/dev/null 2>&1 # the `tput` command is available
+  test -t 1 &&                 # stdout (device 1) is a tty
+    test -z "${NO_COLOR:-}" && # the NO_COLOR variable isn't set
+    is_installed tput          # the `tput` command is available
 }
 if should_use_color; then
   red="$(tput setaf 1)"

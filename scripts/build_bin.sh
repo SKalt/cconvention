@@ -14,6 +14,18 @@ repo_root="$(cd "${this_dir}/.." && pwd)"
 # shellcheck source=./common.sh
 source "${this_dir}/common.sh"
 
+find_objcopy() {
+  local objcopy
+  if is_installed objcopy; then
+    objcopy="$(command -v objcopy)"
+  elif is_installed gobjcopy; then
+    objcopy="$(command -v gobjcopy)"
+  else
+    log_fail "could not find objcopy"
+  fi
+  printf "%s" "$objcopy"
+}
+
 build_bin() {
   local target=$1
   local version=$2
@@ -25,6 +37,8 @@ build_bin() {
   release) cargo_args="--release" ;;
   esac
 
+  local objcopy="$(find_objcopy)"
+  log_dbug "using objcopy: $objcopy"
   local bin_path="target/${target}/${profile}/${version}_language_server"
   log_info "building ${bin_path}"
   cmd="cargo build --bin ${version}_language_server --target $target $cargo_args --all-features --timings"
@@ -34,9 +48,9 @@ build_bin() {
   if [ "$profile" = "release" ]; then
     log_info "stripping debug symbols from ${bin_path}"
     log_dbug "debug symbols will be stored in ${bin_path}.debug"
-    objcopy --only-keep-debug "$bin_path" "$bin_path.debug"
-    objcopy --strip-debug --strip-unneeded "$bin_path"
-    objcopy --add-gnu-debuglink="$bin_path.debug" "$bin_path"
+    "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
+    "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+    "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
     # TODO: upload the debug symbols to Sentry
     # sentry-cli upload-dif --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"
   fi
