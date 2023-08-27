@@ -51,8 +51,8 @@ jobs:
             pkg/pro
       - run: cargo clippy --all-features
       - run: cargo test --all-features
-      - run: brew install binutils
-        if: ${{matrix.os}} == 'macos-latest'
+      - if: matrix.os == 'macos-latest'
+        run: brew install binutils
       - name: "build the binary for ${{matrix.target}}"
         run: |
           ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
