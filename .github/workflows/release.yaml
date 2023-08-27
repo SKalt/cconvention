@@ -8,6 +8,7 @@ on:
 jobs:
   publish:
     strategy:
+      fail-fast: false # to see what builds/what fails
       matrix:
         include:
           # each `target` is picked from `rustup target list` and each
