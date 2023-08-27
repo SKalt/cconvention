@@ -40,7 +40,7 @@ build_bin() {
   local objcopy
   objcopy="$(find_objcopy)"
   log_dbug "using objcopy: $objcopy"
-  local bin_path="target/${target}/${profile}/${version}_language_server"
+  local bin_path="${repo_root}/target/${target}/${profile}/${version}_language_server"
   log_info "building ${bin_path}"
   cmd="cargo build --bin ${version}_language_server --target $target $cargo_args --all-features --timings"
   log_dbug "running: $cmd"

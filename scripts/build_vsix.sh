@@ -49,16 +49,24 @@ build_vsix() {
   local profile=$2
   local target=$3
   local repo_root=$4
-
   local variant="${version}_language_server"
   local working_dir="${repo_root}/editors/code/$version"
   local dist_dir="$working_dir/dist"
   local vsix_path="$dist_dir/cconvention.vsix"
   local marked_path="$dist_dir/cconvention.${target}.vsix"
   cd "$working_dir" || exit 1
-  cp "$repo_root/target/$profile/${variant}" "$dist_dir/cconvention"
+  # log_dbug "copying
+  local original_bin_path="$repo_root/target/$profile/$variant"
+  log_dbug "copying orignial bin $original_bin_path -> $dist_dir/cconvention"
+  cp "$original_bin_path" "$dist_dir/cconvention"
   rm -f "$vsix_path" # just in case
   # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
+  log_info "building $vsix_path"
+  log_dbug "target: $target"
+  log_dbug "profile: $profile"
+  log_dbug "version: $version"
+  log_dbug "variant: $variant"
+
   set +o pipefail
   # ^ yes emits error code 141 when vsce exits and breaks the pipe
   yes | vsce package -o "$vsix_path" --no-dependencies --target "$target"
