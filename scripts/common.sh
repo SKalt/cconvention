@@ -15,6 +15,8 @@ require_cli() {
   if ! is_installed "$1"; then
     log_errr "missing required CLI: $1"
     exit 127
+  else
+    log_dbug "found $1 @ $(command -v "$1")"
   fi
 }
 
@@ -117,6 +119,24 @@ derive_default_target() {
   log_fail "unsupported os/arch: $os/$arch"
 }
 
+derive_rust_target_dir() {
+  local profile=$1 # debug or release
+  local target=$2  # e.g. x86_64-unknown-linux-gnu
+  local repo_root=$3
+  printf "%s/target/%s/%s" "$repo_root" "$target" "$profile"
+}
+
+derive_rust_bin_path() {
+  local version=$1 # base or pro
+  local profile=$2 # debug or release
+  local target=$3  # e.g. x86_64-unknown-linux-gnu
+  local repo_root=$4
+  local variant="${version}_language_server"
+  local target_dir
+  target_dir="$(derive_rust_target_dir "$profile" "$target" "$repo_root")"
+  printf "%s/%s" "$target_dir" "$variant"
+}
+
 parse_rust_target() {
   local target=$1
   if [ -z "$target" ]; then
@@ -130,4 +150,21 @@ parse_rust_target() {
   aarch64-apple-darwin) printf "aarch64-apple-darwin" ;;
   *) log_fail "invalid or currently-unsupported target: $target" ;;
   esac
+}
+
+debug_path() {
+  local i=0
+  log_dbug "PATH:"
+  echo "$PATH" | tr ':' '\n' | while read -r segment; do
+    i=$((i + 1))
+    log_dbug "  $i. $segment"
+  done
+}
+
+log_stdin() {
+  local prefix="${1:-}"
+  local suffix="${2:-}"
+  cat - | while IFS= read -r line; do
+    log_dbug "${prefix}${line}${suffix}";
+  done
 }

@@ -34,6 +34,7 @@ server: ./target/${PROFILE}/${VERSION}_language_server
 
 bin: ./bin/cconvention
 ./bin/cconvention: ./target/${PROFILE}/${VERSION}_language_server
+	mkdir -p ./bin && \
 	cd ./bin && \
 	rm -f ${VERSION}_language_server && \
 	rm -f cconvention && \
@@ -59,7 +60,8 @@ client: client-js tmLanguage ./editors/code/${VERSION}/dist/cconvention
 ./editors/code/${VERSION}/dist/cconvention: \
 	./target/${PROFILE}/${VERSION}_language_server
 
-	cp ./target/${PROFILE}/${VERSION}_language_server ./editors/code/${VERSION}/dist/cconvention
+	mkdir -p ./editors/code/${VERSION}/dist && \
+		cp ./target/${PROFILE}/${VERSION}_language_server ./editors/code/${VERSION}/dist/cconvention
 
 vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
 

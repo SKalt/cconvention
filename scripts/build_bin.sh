@@ -16,14 +16,37 @@ source "${this_dir}/common.sh"
 
 find_objcopy() {
   local objcopy
+  debug_path
+
   if is_installed objcopy; then
-    objcopy="$(command -v objcopy)"
+    log_dbug "found objcopy @ $(command -v objcopy)"
+    objcopy="objcopy"
   elif is_installed gobjcopy; then
-    objcopy="$(command -v gobjcopy)"
+    log_dbug "found gobjcopy @ $(command -v gobjcopy)"
+    objcopy="gobjcopy"
   else
     log_fail "could not find objcopy"
   fi
   printf "%s" "$objcopy"
+}
+
+derive_cargo_cmd() {
+  local profile=$1
+  local variant=$2
+  local args=""
+  case "$profile" in
+  debug) ;;
+  release) args="--release" ;;
+  esac
+  printf "cargo build --bin %s --target %s %s --all-features --timings"  \
+                  "${variant}"   "$target" "$args"
+}
+
+debug_bin_path() {
+  local repo_root=$1
+  find "${repo_root}/target" -type f -name '*language_server' |
+    grep -v 'fingerprint' |
+    while IFS= read -r line; do log_dbug "- $line"; done
 }
 
 build_bin() {
@@ -31,26 +54,54 @@ build_bin() {
   local version=$2
   local profile=$3
   cd "$repo_root" || exit 1
-  local cargo_args=""
-  case "$profile" in
-  debug) ;;
-  release) cargo_args="--release" ;;
-  esac
+  local variant="${version}_language_server"
+  local build_cmd=""
+  build_cmd="$(derive_cargo_cmd "$profile" "$variant")"
 
   local objcopy
   objcopy="$(find_objcopy)"
   log_dbug "using objcopy: $objcopy"
-  local bin_path="${repo_root}/target/${target}/${profile}/${version}_language_server"
+
+  local target_dir
+  target_dir="$(derive_rust_target_dir "$profile" "$target" "$repo_root")"
+  log_dbug "expected target dir: ${target_dir}"
+
+  local bin_path
+  bin_path="$(derive_rust_bin_path "$version" "$profile" "$target" "$repo_root")"
+  log_dbug "expected bin path: ${bin_path}"
+
+  log_dbug "running: $build_cmd"
   log_info "building ${bin_path}"
-  cmd="cargo build --bin ${version}_language_server --target $target $cargo_args --all-features --timings"
-  log_dbug "running: $cmd"
-  (eval "$cmd" 2>&1) | while IFS= read -r line; do log_dbug "${gray}> ${line}${reset}"; done
+  (eval "$build_cmd" 2>&1) | log_stdin "${gray}> " "${reset}"
+
+  # debugging where the binary actually is
+  debug_bin_path "$repo_root"
+
+  if [ ! -f "$bin_path" ]; then
+    log_errr "could not find ${bin_path}"
+    target_dir="$repo_root/target/$profile"
+    bin_path="$target_dir/$variant"
+    if [ ! -f "$bin_path" ]; then
+      log_errr "could not find ${bin_path}"
+      exit 1
+    fi
+  fi
+
+  if is_installed tree; then
+    tree -d -L 3 | log_dbug;
+  fi
+
+  log_dbug "contents of ${target_dir}:"
+  # shellcheck disable=SC2012
+  ls -l "$target_dir" | log_stdin "  - "
+
   # strip debug symbols from the binary if we're building a release
   if [ "$profile" = "release" ]; then
     log_info "stripping debug symbols from ${bin_path}"
-    log_dbug "debug symbols will be stored in ${bin_path}.debug"
     "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
+    log_dbug "debug symbols are stored in ${bin_path}.debug"
     "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+    log_dbug "linking debug symbols to ${bin_path}"
     "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
     # TODO: upload the debug symbols to Sentry
     # sentry-cli upload-dif --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"

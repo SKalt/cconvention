@@ -78,6 +78,10 @@
               git
               bashInteractive
 
+              # JS/TS development
+              nodejs_18
+              nodejs_18.pkgs.pnpm
+
               # demo editors
               helix
               vim

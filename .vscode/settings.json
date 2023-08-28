@@ -9,5 +9,6 @@
     "editor.acceptSuggestionOnEnter": "off"
   },
   "rust-analyzer.cargo.features": "all",
-  "nixEnvSelector.nixFile": "${workspaceRoot}/flake.nix"
+  "nixEnvSelector.nixFile": "${workspaceRoot}/flake.nix",
+  "nix.enableLanguageServer": true,
 }

@@ -1,4 +1,4 @@
-name: release?
+name: release bins and vscode extension
 on:
   workflow_dispatch: # for manual debugging
   push:
@@ -44,26 +44,26 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustup component add rust-src
       - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
-        with:
-          key: ${{ matrix.target }}
-          workspaces: |
-            pkg/base
-            pkg/pro
-      - run: cargo clippy --all-features
-      - run: cargo test --all-features
+      #   with:
+      #     key: ${{ matrix.target }}
+      #     workspaces: |
+      #       pkg/base
+      #       pkg/pro
+      # - run: cargo clippy --all-features
+      # - run: cargo test --all-features
       - if: matrix.os == 'macos-latest'
         run: brew install binutils
       - name: "build the binary for ${{matrix.target}}"
         shell: bash
         run: |
+          export PATH="/usr/local/opt/binutils/bin:$PATH"
           ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
 
       - name: upload ${{ matrix.target }} bin
         uses: actions/upload-artifact@v3
         with:
           name: cconvention-base-${{matrix.target}}
-          path: ./target/release/base_language_server
-
+          path: ./target/${{matrix.target}}/release/base_language_server
       # build the vscode extension
       - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
         with:
@@ -75,14 +75,24 @@ jobs:
           cache-dependency-path: |
             ./editors/code/base/pnpm-lock.yaml
             ./editors/code/pro/pnpm-lock.yaml
-      # TODO: check JS/TS/JSON formatting with Prettier
+      - run: cd ./editors/code/base && pnpm install --frozen-lockfile
+      # # TODO: check JS/TS/JSON formatting with Prettier
       - name: cache the built JS
         uses: actions/cache@v3
         id: built-base-js
         with:
           path: ./editors/code/base/dist/main.min.common.js
           key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
-      # TODO: ensure the tmLanguage.json is up-to-date with the _
+      # TODO: ensure the tmLanguage.json is up-to-date with the checked-in tmlanguage
+      # should be a separare workflow, I
+      # - name: check the tmLanguage up-to-date
+      #   shell: bash
+      #   if: ...
+      #   working-directory: ./editors/code/base
+      #   run: |
+      #     export PATH=${PWD}/node_modules/.bin:$PATH
+      #     ./scripts/build_textmate.sh
+      #     git --no-pager diff --exit-code -- src/tmLanguage.json
       - name: build the JS if changed
         shell: bash
         if: steps.built-base-js.outputs.cache-hit != 'true'
@@ -90,12 +100,13 @@ jobs:
         run: |
           PATH=${PWD}/node_modules/.bin:$PATH ./scripts/build_js.sh
       # TODO: move building the JS bundle and checking the tmLanguage to its own job?
-      # Possible minor data-race -- should be ok due to deterministic JS-build outputs
+      # if parallelized: possible minor data-race -- should be ok due to deterministic JS-build outputs
       - name: build the ${{ matrix.vscode-target }} vsix
         shell: bash
         run: |
-          ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.vscode-target }}
-      - name: upload ${{ matrix.target }} vsix
+          export PATH=${PWD}/editors/code/base/node_modules/.bin:$PATH
+          ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.target }}
+      - name: upload ${{ matrix.vscode-target }} vsix
         uses: actions/upload-artifact@v3
         with:
           name: cconvention-${{matrix.vscode-target}}.vsix

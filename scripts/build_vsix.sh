@@ -13,21 +13,22 @@
 ###   TARGET: see --target (default: x86_64-unknown-linux-gnu)
 
 # lookaround
+set -e
 if [[ "${BASH_SOURCE[0]}" = */* ]]; then this_dir="${BASH_SOURCE[0]%/*}"; else this_dir=.; fi
 this_dir="$(cd "${this_dir}" && pwd)"
 repo_root="$(cd "${this_dir}/.." && pwd)"
-
+set +e
 # shellcheck source=./common.sh
 source "${this_dir}/common.sh"
 
-parse_vsce_target() {
+rust_to_vsce_target() {
   local target=$1
   case "$target" in
   "") derive_default_target && return 0 ;;
-  x86_64-pc-windows-msvc | win32-x64) printf "win32-x64" ;;
-  x86_64-unknown-linux-gnu | linux-x64) printf "linux-x64" ;;
-  x86_64-apple-darwin | darwin-x64) printf "darwin-x64" ;;
-  aarch64-apple-darwin | darwin-arm64) printf "darwin-arm64" ;;
+  x86_64-pc-windows-msvc) printf "win32-x64" ;;
+  x86_64-unknown-linux-gnu) printf "linux-x64" ;;
+  x86_64-apple-darwin) printf "darwin-x64" ;;
+  aarch64-apple-darwin) printf "darwin-arm64" ;;
 
   # TODO: support other common targets:
   # alpine-arm64) ;;
@@ -47,16 +48,23 @@ parse_vsce_target() {
 build_vsix() {
   local version=$1
   local profile=$2
-  local target=$3
+  local rust_target=$3
   local repo_root=$4
   local variant="${version}_language_server"
   local working_dir="${repo_root}/editors/code/$version"
   local dist_dir="$working_dir/dist"
   local vsix_path="$dist_dir/cconvention.vsix"
-  local marked_path="$dist_dir/cconvention.${target}.vsix"
-  cd "$working_dir" || exit 1
+  local vsce_target
+  vsce_target="$(rust_to_vsce_target "$rust_target")"
+  local marked_path="$dist_dir/cconvention.${vsce_target}.vsix"
+  local rust_target_dir
+  rust_target_dir="$(derive_rust_target_dir "$profile" "$rust_target" "$repo_root")"
+  cd "$working_dir"
+  mkdir -p "$dist_dir"
   # log_dbug "copying
-  local original_bin_path="$repo_root/target/$profile/$variant"
+  local original_bin_path="$rust_target_dir/$variant"
+  # shellcheck disable=SC2012
+  ls -al "$rust_target_dir" | while IFS= read -r line; do log_dbug "${line}"; done
   log_dbug "copying orignial bin $original_bin_path -> $dist_dir/cconvention"
   cp "$original_bin_path" "$dist_dir/cconvention"
   rm -f "$vsix_path" # just in case
@@ -65,7 +73,7 @@ build_vsix() {
 
   set +o pipefail
   # ^ yes emits error code 141 when vsce exits and breaks the pipe
-  yes | vsce package -o "$vsix_path" --no-dependencies --target "$target"
+  yes | vsce package -o "$vsix_path" --no-dependencies --target "$vsce_target"
   # --no-dependencies since esbuild bundles all external packages
   set -o pipefail
   cp "$vsix_path" "$marked_path"
@@ -93,15 +101,21 @@ main() {
   done
 
   version="$(parse_version "$version")"
-  target="$(parse_vsce_target "$target")"
+  rust_target="$(parse_rust_target "$target")"
+
   profile="$(parse_profile "$profile")"
 
-  log_dbug "profile: $profile"
-  log_dbug "version: $version"
-  log_dbug "target: $target"
-  log_dbug "repo_root: $repo_root"
+  require_cli vsce
+  log_dbug "  profile : $profile"
+  log_dbug "  version : $version"
+  log_dbug "   target : $target"
+  log_dbug "repo_root : $repo_root"
 
-  build_vsix "$version" "$profile" "$target" "$repo_root"
+  # print only the directories in the file tree
+  if is_installed tree; then tree -d -L 3; fi
+  ls -l "$repo_root/target/$profile"
+
+  build_vsix "$version" "$profile" "$rust_target" "$repo_root"
 
 }
 
