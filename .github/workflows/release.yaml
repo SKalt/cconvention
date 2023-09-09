@@ -69,8 +69,9 @@ jobs:
       - name: "build the binary for ${{matrix.target}}"
         shell: bash
         run: |
-          export PATH="/usr/local/opt/binutils/bin:$PATH"
-          ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
+          PATH="/usr/local/opt/binutils/bin:$PATH"
+          PATH="$PWD/editors/code/base/node_modules/.bin:$PATH"
+          PATH="$PATH" ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
 
       - name: upload ${{ matrix.target }} bin
         uses: actions/upload-artifact@v3
