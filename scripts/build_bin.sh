@@ -49,6 +49,10 @@ debug_bin_path() {
     while IFS= read -r line; do log_dbug "- $line"; done
 }
 
+handle_err() {
+  log_errr "ERROR: exit $? @ ${BASH_SOURCE[1]} line ${BASH_LINENO[0]}"
+}
+
 build_bin() {
   local target=$1
   local version=$2
@@ -57,6 +61,9 @@ build_bin() {
   local variant="${version}_language_server"
   local build_cmd=""
   build_cmd="$(derive_cargo_cmd "$profile" "$variant")"
+
+  require_cli "cargo"
+  require_cli "sentry-cli"
 
   local objcopy
   objcopy="$(find_objcopy)"
@@ -70,12 +77,17 @@ build_bin() {
   bin_path="$(derive_rust_bin_path "$version" "$profile" "$target" "$repo_root")"
   log_dbug "expected bin path: ${bin_path}"
 
+  local debug_ext
+  debug_ext="$(derive_rust_debug_file_ext "$target")"
+  local debug_file="${bin_path}.${debug_ext}"
+  log_dbug "expected debug file: ${debug_file}"
+
   log_dbug "running: $build_cmd"
   log_info "building ${bin_path}"
   (eval "$build_cmd" 2>&1) | log_stdin "${gray}> " "${reset}"
 
   # debugging where the binary actually is
-  debug_bin_path "$repo_root"
+  # debug_bin_path "$repo_root"
 
   if [ ! -f "$bin_path" ]; then
     log_errr "could not find ${bin_path}"
@@ -86,30 +98,54 @@ build_bin() {
       exit 1
     fi
   fi
+  du -h "$bin_path" | log_info
+  if [ -f "$debug_file" ]; then
+    du -h "$debug_file" | log_info
+    sentry-cli debug-files check "$debug_file" | log_stdin
+  fi
 
   if is_installed tree; then
     tree -d -L 3 | log_dbug;
   fi
 
-  log_dbug "contents of ${target_dir}:"
+  # log_dbug "contents of ${target_dir}:"
   # shellcheck disable=SC2012
-  ls -l "$target_dir" | log_stdin "  - "
+  # ls -l "$target_dir" | log_stdin "  - "
 
   # strip debug symbols from the binary if we're building a release
-  if [ "$profile" = "release" ]; then
+  case "${profile}-${target}" in
+    release-aarch64-apple-darwin)
+    log_info "skipping debug symbol stripping for ${profile}-${target}"
+    ;;
+    *)
+    # log_dbug "debug file extension: ${debug_ext}"
+    # find ./target -type f -name "*.${debug_ext}" | log_stdin "  - "
+    # see https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
+
     log_info "stripping debug symbols from ${bin_path}"
     "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
     log_dbug "debug symbols are stored in ${bin_path}.debug"
+
+    log_dbug "stripping debug symbols from $bin_path"
+    log_dbug "before: $(du -h "$bin_path")"
     "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+    log_dbug " after: $(du -h "$bin_path")"
+    log_dbug "debug symbols stripped from ${bin_path}"
+
     log_dbug "linking debug symbols to ${bin_path}"
     "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
-    # TODO: upload the debug symbols to Sentry
-    # sentry-cli upload-dif --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"
-  fi
+    log_dbug "debug symbols linked to ${bin_path}"
+
+    sentry-cli debug-files check "$bin_path.debug"
+  #   # TODO: upload the debug symbols to Sentry
+  #   # sentry-cli debug-file upload --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"
+    ;;
+  esac
 }
 
 main() {
-  set -euo pipefail
+  set -eu -o pipefail -o errtrace
+  trap handle_err ERR
   local version="${VERSION:-base}"
   local profile="${PROFILE:-debug}"
   local target="${TARGET:-x86_64-unknown-linux-gnu}"

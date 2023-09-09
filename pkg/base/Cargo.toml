@@ -52,3 +52,6 @@ name = "base_language_server"
 required-features = ["cli"]
 # [profile.release]
 # lto = true
+
+[target.aarch64-apple-darwin]
+debug = false # FIXME: wrangle m1 binutils

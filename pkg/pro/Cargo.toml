@@ -34,3 +34,6 @@ toml_config = ["toml/preserve_order"]
 [[bin]]
 name = "pro_language_server"
 required-features = ["cli"]
+
+[target.aarch64-apple-darwin]
+debug = false # FIXME: wrangle m1 binutils

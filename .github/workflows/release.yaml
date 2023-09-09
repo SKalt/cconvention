@@ -27,6 +27,7 @@ jobs:
             target: x86_64-apple-darwin
             vscode-target: darwin-x64x
           # arm64 macos
+          # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
           - os: macos-latest
             target: aarch64-apple-darwin
             vscode-target: darwin-arm64
@@ -53,17 +54,6 @@ jobs:
       # - run: cargo test --all-features
       - if: matrix.os == 'macos-latest'
         run: brew install binutils
-      - name: "build the binary for ${{matrix.target}}"
-        shell: bash
-        run: |
-          export PATH="/usr/local/opt/binutils/bin:$PATH"
-          ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
-
-      - name: upload ${{ matrix.target }} bin
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-base-${{matrix.target}}
-          path: ./target/${{matrix.target}}/release/base_language_server
       # build the vscode extension
       - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
         with:
@@ -76,6 +66,17 @@ jobs:
             ./editors/code/base/pnpm-lock.yaml
             ./editors/code/pro/pnpm-lock.yaml
       - run: cd ./editors/code/base && pnpm install --frozen-lockfile
+      - name: "build the binary for ${{matrix.target}}"
+        shell: bash
+        run: |
+          export PATH="/usr/local/opt/binutils/bin:$PATH"
+          ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
+
+      - name: upload ${{ matrix.target }} bin
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-base-${{matrix.target}}
+          path: ./target/${{matrix.target}}/release/base_language_server
       # # TODO: check JS/TS/JSON formatting with Prettier
       - name: cache the built JS
         uses: actions/cache@v3

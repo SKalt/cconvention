@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "mads-hartmann.bash-ide-vscode",
+    "mkhl.direnv",
+    "EditorConfig.EditorConfig",
+    "tamasfe.even-better-toml",
+    "ms-vscode.makefile-tools",
+    "pinage404.nix-extension-pack",
+    "esbenp.prettier-vscode",
+    "timonwong.shellcheck",
+    "rust-lang.rust-analyzer",
+  ]
+}
