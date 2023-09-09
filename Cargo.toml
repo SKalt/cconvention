@@ -1,8 +1,11 @@
 [workspace]
-members = [
-  "pkg/base",
-  "pkg/pro",
-]
+members = ["pkg/base", "pkg/pro"]
 
 [profile.release]
 lto = true
+debug = true
+#^ needed to produce debug info at all
+# see https://doc.rust-lang.org/rustc/codegen-options/index.html#debug
+
+[target.aarch64-apple-darwin]
+debug = false # FIXME: wrangle m1 binutils

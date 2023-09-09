@@ -153,8 +153,6 @@ where
                     release: sentry::release_name!(),
                     auto_session_tracking: true,
                     traces_sample_rate: 0.9, // TODO: reduce sampling rates
-                    enable_profiling: true,
-                    profiles_sample_rate: 0.9,
                     ..Default::default()
                 },
             ))
@@ -168,7 +166,7 @@ where
         .subcommand(
             Command::new("serve").about("Run a language server")
                 .arg(Arg::new("stdio").short('s').long("stdio").action(ArgAction::SetTrue).help("Communicate via stdio"))
-                .arg(Arg::new("tcp").short('t').long("tls").help("Communicate via TCP")))
+                .arg(Arg::new("tcp").short('t').long("tcp").help("Communicate via TCP")))
         .subcommand(
             Command::new("check").about("Lint commit message(s)").infer_long_args(true)
                 .arg(

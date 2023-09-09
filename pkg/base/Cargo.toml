@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.3", optional = true, features = [
 indexmap = { version = "2", features = ["serde"] }
 clap = { version = "4", optional = true }
 [dependencies.sentry]
-version = "0.31.5"
+version = "0.31.6"
 default-features = false
 features = [
   # defaults, less "transport"
@@ -36,7 +36,6 @@ features = [
   "reqwest",
   "rustls",
   # profiling + tracing tools
-  "profiling",
   "tracing",
 ]
 optional = true
