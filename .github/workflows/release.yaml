@@ -27,6 +27,7 @@ jobs:
             target: x86_64-apple-darwin
             vscode-target: darwin-x64x
           # arm64 macos
+          # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
           - os: macos-latest
             target: aarch64-apple-darwin
             vscode-target: darwin-arm64

@@ -56,6 +56,7 @@
   "homepage": "https://github.com/skalt/cconvention#TODO",
   "license": "SEE LICENSE IN ./LICENSE.md",
   "devDependencies": {
+    "@sentry/cli": "^2.20.6",
     "@types/node": "^18.17.11",
     "@types/vscode": "~1.77.0",
     "@vscode/vsce": "~2.20.1",

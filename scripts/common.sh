@@ -58,7 +58,7 @@ log_msg() {
   local color=$2
   local message="${3:-}"
   if [ -z "$message" ]; then
-    read -r message
+    IFS= read -r message
   fi
 
   printf "%s%s\t%s%s\t%s%s\n" \
@@ -148,6 +148,19 @@ parse_rust_target() {
   x86_64-unknown-linux-gnu) printf "x86_64-unknown-linux-gnu" ;;
   x86_64-apple-darwin) printf "x86_64-apple-darwin" ;;
   aarch64-apple-darwin) printf "aarch64-apple-darwin" ;;
+  *) log_fail "invalid or currently-unsupported target: $target" ;;
+  esac
+}
+derive_rust_debug_file_ext() {
+  local target=$1
+  if [ -z "$target" ]; then
+    target="$(derive_default_target)"
+  fi
+  case "$target" in
+  x86_64-pc-windows-msvc) printf "pdb" ;;
+  x86_64-apple-darwin) printf "dSYM" ;;
+  aarch64-apple-darwin) printf "dSYM" ;;
+  x86_64-unknown-linux-gnu) printf "dwp" ;;
   *) log_fail "invalid or currently-unsupported target: $target" ;;
   esac
 }
