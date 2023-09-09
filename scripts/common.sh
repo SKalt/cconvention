@@ -135,6 +135,9 @@ derive_rust_bin_path() {
   local target_dir
   target_dir="$(derive_rust_target_dir "$profile" "$target" "$repo_root")"
   printf "%s/%s" "$target_dir" "$variant"
+  case "$target" in
+  x86_64-pc-windows-msvc) printf ".exe" ;;
+  esac
 }
 
 parse_rust_target() {

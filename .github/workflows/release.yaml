@@ -71,7 +71,9 @@ jobs:
         run: |
           PATH="/usr/local/opt/binutils/bin:$PATH"
           PATH="$PWD/editors/code/base/node_modules/.bin:$PATH"
-          PATH="$PATH" ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
+          export PATH
+          export RUSTFLAGS="-Clink-args=-Wl,--build-id=sha1"
+          ./scripts/build_bin.sh --version=base --profile=release --target ${{matrix.target}}
 
       - name: upload ${{ matrix.target }} bin
         uses: actions/upload-artifact@v3

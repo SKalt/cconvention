@@ -11,6 +11,7 @@ if [[ "${BASH_SOURCE[0]}" = */* ]]; then this_dir="${BASH_SOURCE[0]%/*}"; else t
 this_dir="$(cd "${this_dir}" && pwd)"
 repo_root="$(cd "${this_dir}/.." && pwd)"
 
+RUSTFLAGS="${RUSTFLAGS:-"-Clink-args=-Wl,--build-id=sha1"}"
 # shellcheck source=./common.sh
 source "${this_dir}/common.sh"
 
