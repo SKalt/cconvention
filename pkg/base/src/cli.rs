@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -7,7 +8,6 @@ use crate::{
     git::git,
 };
 #[cfg(feature = "tracing")]
-use atty::{self, Stream};
 use clap::{Arg, ArgAction, Command};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{self, prelude::*, util::SubscriberInitExt};
@@ -122,7 +122,7 @@ where
         let reg = tracing_subscriber::Registry::default().with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
-                .with_ansi(atty::is(Stream::Stderr))
+                .with_ansi(std::io::stderr().is_terminal())
                 .with_filter(tracing_subscriber::filter::filter_fn(|meta| {
                     match meta.module_path() {
                         Some(path) => path.starts_with(module_path!()) || path.starts_with("base"),

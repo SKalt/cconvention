@@ -16,7 +16,6 @@ serde = "1"
 crop = "0.3.0"
 tree-sitter-gitcommit = "0.3.3"
 regex = "1"
-atty = { version = "0.2", optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true, features = [
   "registry",
@@ -42,7 +41,7 @@ optional = true
 
 
 [features]
-cli = ["dep:clap", "dep:atty"]
+cli = ["dep:clap"]
 tracing = ["dep:tracing", "dep:tracing-subscriber"]
 # TODO: separate error reporting feature
 telemetry = ["dep:sentry", "tracing"]
