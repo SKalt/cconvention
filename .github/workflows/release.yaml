@@ -14,23 +14,23 @@ jobs:
           # each `target` is picked from `rustup target list` and each
           # `vscode-target` is drawn from `vsce publish --help`
           # x86 windows
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            vscode-target: win32-x64
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   vscode-target: win32-x64
           # x86 linux
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             vscode-target: linux-x64
           # TODO: arm64 linux
           # x86 macos
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            vscode-target: darwin-x64x
-          # arm64 macos
-          # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            vscode-target: darwin-arm64
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          #   vscode-target: darwin-x64x
+          # # arm64 macos
+          # # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   vscode-target: darwin-arm64
 
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -81,12 +81,12 @@ jobs:
           name: cconvention-base-${{matrix.target}}
           path: ./target/${{matrix.target}}/release/base_language_server
       # # TODO: check JS/TS/JSON formatting with Prettier
-      - name: cache the built JS
-        uses: actions/cache@v3
-        id: built-base-js
-        with:
-          path: ./editors/code/base/dist/main.min.common.js
-          key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
+      # - name: cache the built JS
+      #   uses: actions/cache@v3
+      #   id: built-base-js
+      #   with:
+      #     path: ./editors/code/base/dist/main.min.common.js
+      #     key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
       # TODO: ensure the tmLanguage.json is up-to-date with the checked-in tmlanguage
       # should be a separare workflow, I
       # - name: check the tmLanguage up-to-date
@@ -97,21 +97,21 @@ jobs:
       #     export PATH=${PWD}/node_modules/.bin:$PATH
       #     ./scripts/build_textmate.sh
       #     git --no-pager diff --exit-code -- src/tmLanguage.json
-      - name: build the JS if changed
-        shell: bash
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-        working-directory: ./editors/code/base
-        run: |
-          PATH=${PWD}/node_modules/.bin:$PATH ./scripts/build_js.sh
+      # - name: build the JS if changed
+      #   shell: bash
+      #   if: steps.built-base-js.outputs.cache-hit != 'true'
+      #   working-directory: ./editors/code/base
+      #   run: |
+      #     PATH=${PWD}/node_modules/.bin:$PATH ./scripts/build_js.sh
       # TODO: move building the JS bundle and checking the tmLanguage to its own job?
       # if parallelized: possible minor data-race -- should be ok due to deterministic JS-build outputs
-      - name: build the ${{ matrix.vscode-target }} vsix
-        shell: bash
-        run: |
-          export PATH=${PWD}/editors/code/base/node_modules/.bin:$PATH
-          ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.target }}
-      - name: upload ${{ matrix.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-${{matrix.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.vscode-target }}.vsix
+      # - name: build the ${{ matrix.vscode-target }} vsix
+      #   shell: bash
+      #   run: |
+      #     export PATH=${PWD}/editors/code/base/node_modules/.bin:$PATH
+      #     ./scripts/build_vsix.sh --version=base --profile=release --target=${{ matrix.target }}
+      # - name: upload ${{ matrix.vscode-target }} vsix
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: cconvention-${{matrix.vscode-target}}.vsix
+      #     path: ./editors/code/base/dist/cconvention.${{ matrix.vscode-target }}.vsix
