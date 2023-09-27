@@ -11,4 +11,8 @@
   "rust-analyzer.cargo.features": "all",
   "nixEnvSelector.nixFile": "${workspaceRoot}/flake.nix",
   "nix.enableLanguageServer": true,
+  "nix.serverPath": "nil"
+  // "nix.serverSettings": {
+  //   "env": "RUST_LOG=trace"
+  // }
 }

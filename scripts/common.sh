@@ -120,9 +120,9 @@ derive_default_target() {
 }
 
 derive_rust_target_dir() {
-  local profile=$1 # debug or release
+  local repo_root=$1
   local target=$2  # e.g. x86_64-unknown-linux-gnu
-  local repo_root=$3
+  local profile=$3 # debug or release
   printf "%s/target/%s/%s" "$repo_root" "$target" "$profile"
 }
 
@@ -133,7 +133,7 @@ derive_rust_bin_path() {
   local repo_root=$4
   local variant="${version}_language_server"
   local target_dir
-  target_dir="$(derive_rust_target_dir "$profile" "$target" "$repo_root")"
+  target_dir="$(derive_rust_target_dir "$repo_root" "$target" "$profile")"
   printf "%s/%s" "$target_dir" "$variant"
   case "$target" in
   x86_64-pc-windows-msvc) printf ".exe" ;;

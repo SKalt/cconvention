@@ -58,7 +58,7 @@ build_vsix() {
   vsce_target="$(rust_to_vsce_target "$rust_target")"
   local marked_path="$dist_dir/cconvention.${vsce_target}.vsix"
   local rust_target_dir
-  rust_target_dir="$(derive_rust_target_dir "$profile" "$rust_target" "$repo_root")"
+  rust_target_dir="$(derive_rust_target_dir "$repo_root" "$rust_target" "$profile" )"
   cd "$working_dir"
   mkdir -p "$dist_dir"
   # log_dbug "copying

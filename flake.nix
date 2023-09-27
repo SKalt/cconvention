@@ -1,51 +1,54 @@
 {
   description = "A language server to help write conventional commits.";
   inputs = {
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-utils.url = "github:numtide/flake-utils"; # TODO: pin
+    rust-overlay.url = "github:oxalica/rust-overlay"; # TODO: pin
     nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
   };
 
-  outputs = { self, flake-utils, nixpkgs }:
+  outputs = { self, flake-utils, nixpkgs, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
+        overlays = [(import rust-overlay)];
         pkgs = (import nixpkgs) {
-          inherit system;
+          inherit system overlays;
         };
         cargoDeps = pkgs.rustPlatform.importCargoLock {
           lockFile = ./Cargo.lock;
         };
-
-      in
-      rec {
+        base_info = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml));
+        # pro_info = (builtins.fromTOML (builtins.readFile ./pkg/pro/Cargo.toml));
+      in {
         # TODO: figure out how to build or cross-compile
-        # packages = {
-        #   # For `nix build` & `nix run`:
-        #   # TODO: base, pro
-        #   base = pkgs.rustPlatform.buildRustPackage
-        #     {
-        #       # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
-        #       inherit cargoDeps;
-        #       cargoLock = {
-        #         lockFile = ./Cargo.lock;
-        #       };
-        #       pname = "cconvention";
-        #       version = (builtins.fromTOML (builtins.readFile ./pkg/base/Cargo.toml))."package".version;
-        #       src = ./.;
-        #       # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.
-        #       # > Note that setting cargoLock.lockFile or cargoLock.lockFileContents doesn’t add a Cargo.lock to your src, and a Cargo.lock is still required to build a rust package.
-        #       # > -- https://nixos.org/manual/nixpkgs/stable/#importing-a-cargo.lock-file
-        #       # postPatch = ''
-        #       #   ln -s ${./Cargo.lock} Cargo.lock
-        #       # '';
+        packages = {
+          # For `nix build` & `nix run`:
+          # TODO: base, pro, default
+          base = pkgs.rustPlatform.buildRustPackage
+            {
+              # https://nixos.org/manual/nixpkgs/stable/#compiling-rust-applications-with-cargo
+              inherit cargoDeps;
+              cargoLock = { # TODO: see if this is needed
+                lockFile = ./Cargo.lock;
+              };
+              pname = "cconvention"; # overrides actual info in pkg/base/Cargo.toml
+              version = base_info.package.version;
+              src = ./.;
+              # > One caveat is that Cargo.lock cannot be patched in the patchPhase because it runs after the dependencies have already been fetched.
+              # > Note that setting cargoLock.lockFile or cargoLock.lockFileContents doesn’t add a Cargo.lock to your src, and a Cargo.lock is still required to build a rust package.
+              # > -- https://nixos.org/manual/nixpkgs/stable/#importing-a-cargo.lock-file
+              # postPatch = ''
+              #   ln -s ${./Cargo.lock} Cargo.lock
+              # '';
 
-        #       nativeBuildInputs = with pkgs;
-        #         [
-        #           cargo
-        #           clippy
-        #           rustc
-        #         ];
-        #     };
-        # };
+              nativeBuildInputs = with pkgs;
+                [
+                  cargo
+                  clippy
+                  rustc
+                ];
+            };
+
+        };
         # For `nix develop`:
         devShell = pkgs.mkShell {
           # see https://github.com/NixOS/nixpkgs/issues/52447
@@ -65,10 +68,13 @@
               rust-analyzer
               rustfmt
               cargo-cross
+              zig # temp
+              cargo-zigbuild
+              llvmPackages_16.bintools
 
               # nix support
               nixpkgs-fmt
-              rnix-lsp
+              nil
 
               # for recording demos
               vhs

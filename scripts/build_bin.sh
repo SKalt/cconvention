@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-### USAGE: build_bin.sh [-h|--help] [--version=base|pro] [--profile=debug|release]
-###                     [--target=TARGET]
+### USAGE: build_bin.sh [-h|--help] [--version=base|pro]
+###                      [--profile=debug|release] [--target=TARGET]
 ### ARGS:
 ###   -h|--help: print this message and exit
 ###   --version: base or pro (default: base)
@@ -19,7 +19,10 @@ find_objcopy() {
   local objcopy
   debug_path
 
-  if is_installed objcopy; then
+  if is_installed llvm-objcopy; then
+    log_dbug "found llvm-objcopy @ $(command -v llvm-objcopy)"
+    objcopy="llvm-objcopy"
+  elif is_installed objcopy; then
     log_dbug "found objcopy @ $(command -v objcopy)"
     objcopy="objcopy"
   elif is_installed gobjcopy; then
@@ -34,13 +37,18 @@ find_objcopy() {
 derive_cargo_cmd() {
   local profile=$1
   local variant=$2
-  local args=""
+  local target=$3
+
+  local cmd="cargo build"
+  cmd="$cmd --bin ${variant}"
+  cmd="$cmd --target ${target}"
+  cmd="$cmd --all-features --timings"
   case "$profile" in
   debug) ;;
-  release) args="--release" ;;
+  release) cmd="$cmd --release" ;;
+  *) log_fail "invalid profile: $profile" ;;
   esac
-  printf "cargo build --bin %s --target %s %s --all-features --timings"  \
-                  "${variant}"   "$target" "$args"
+  printf "%s" "$cmd"
 }
 
 debug_bin_path() {
@@ -61,27 +69,26 @@ build_bin() {
   cd "$repo_root" || exit 1
   local variant="${version}_language_server"
   local build_cmd=""
-  build_cmd="$(derive_cargo_cmd "$profile" "$variant")"
+  build_cmd="$(derive_cargo_cmd "$profile" "$variant" "$target")"
 
   require_cli "cargo"
-  require_cli "sentry-cli"
 
   local objcopy
   objcopy="$(find_objcopy)"
   log_dbug "using objcopy: $objcopy"
 
   local target_dir
-  target_dir="$(derive_rust_target_dir "$profile" "$target" "$repo_root")"
+  target_dir="$(derive_rust_target_dir "$repo_root" "$target" "$profile")"
   log_dbug "expected target dir: ${target_dir}"
 
   local bin_path
   bin_path="$(derive_rust_bin_path "$version" "$profile" "$target" "$repo_root")"
   log_dbug "expected bin path: ${bin_path}"
 
-  local debug_ext
-  debug_ext="$(derive_rust_debug_file_ext "$target")"
-  local debug_file="${bin_path}.${debug_ext}"
-  log_dbug "expected debug file: ${debug_file}"
+  # local debug_ext
+  # debug_ext="$(derive_rust_debug_file_ext "$target")"
+  # local debug_file="${bin_path}.${debug_ext}"
+  # log_dbug "expected debug file: ${debug_file}"
 
   log_dbug "running: $build_cmd"
   log_info "building ${bin_path}"
@@ -100,44 +107,36 @@ build_bin() {
     fi
   fi
   du -h "$bin_path" | log_info
-  if [ -f "$debug_file" ]; then
-    du -h "$debug_file" | log_info
-    sentry-cli debug-files check "$debug_file" | log_stdin
-  fi
 
-  if is_installed tree; then
-    tree -d -L 3 | log_dbug;
-  fi
 
   # log_dbug "contents of ${target_dir}:"
   # shellcheck disable=SC2012
   # ls -l "$target_dir" | log_stdin "  - "
 
   # strip debug symbols from the binary if we're building a release
-  case "${profile}-${target}" in
-    release-aarch64-apple-darwin)
-    log_info "skipping debug symbol stripping for ${profile}-${target}"
+  case "$profile" in
+    debug)
+    log_info "skipping debug symbol stripping for debug build"
     ;;
-    *)
-    # log_dbug "debug file extension: ${debug_ext}"
-    # find ./target -type f -name "*.${debug_ext}" | log_stdin "  - "
-    # see https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
+    release)
+      # log_dbug "debug file extension: ${debug_ext}"
+      # find ./target -type f -name "*.${debug_ext}" | log_stdin "  - "
+      # see https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 
-    log_info "stripping debug symbols from ${bin_path}"
-    "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
-    log_dbug "debug symbols are stored in ${bin_path}.debug"
+      log_info "stripping debug symbols from ${bin_path}"
+      "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
+      log_dbug "debug symbols are stored in ${bin_path}.debug"
 
-    log_dbug "stripping debug symbols from $bin_path"
-    log_dbug "before: $(du -h "$bin_path")"
-    "$objcopy" --strip-debug --strip-unneeded "$bin_path"
-    log_dbug " after: $(du -h "$bin_path")"
-    log_dbug "debug symbols stripped from ${bin_path}"
+      log_dbug "stripping debug symbols from $bin_path"
+      log_dbug "before: $(du -h "$bin_path")"
+      "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+      log_dbug " after: $(du -h "$bin_path")"
+      log_dbug "debug symbols stripped from ${bin_path}"
 
-    log_dbug "linking debug symbols to ${bin_path}"
-    "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
-    log_dbug "debug symbols linked to ${bin_path}"
+      log_dbug "linking debug symbols to ${bin_path}"
+      "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
+      log_dbug "debug symbols linked to ${bin_path}"
 
-    sentry-cli debug-files check "$bin_path.debug"
   #   # TODO: upload the debug symbols to Sentry
   #   # sentry-cli debug-file upload --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"
     ;;
