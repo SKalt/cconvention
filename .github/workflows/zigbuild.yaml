@@ -149,154 +149,180 @@ jobs:
         with:
           name: cconvention-base-${{matrix.cross.target}}
           path: ./target/${{matrix.cross.target}}/release/base_language_server*
-  build-js:
-    name: Bundle VSCode extension JS
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # shallow clone for speed
-      - name: cache the built JS
-        uses: actions/cache@v3
-        id: built-base-js
-        with:
-          path: ./editors/code/base/dist/main.min.common.js
-          key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
-      - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-        with:
-          version: 8
-      - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-        with:
-          node-version: 18
-          cache: "pnpm"
-          cache-dependency-path: |
-            ./editors/code/base/pnpm-lock.yaml
-            ./editors/code/pro/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: editors/code/base
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-      - name: modify $PATH
-        shell: bash
-        working-directory: ./editors/code/base
-        run: |
-          export PATH=${PWD}/node_modules/.bin:$PATH
-          echo PATH=$PATH | tee -a $GITHUB_ENV
-      - name: check the tmLanguage up-to-date
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: ./editors/code/base
-        run: |
-          ./scripts/build_textmate.sh
-          git --no-pager diff --exit-code -- src/tmLanguage.json
-      - name: build the JS if changed
-        shell: bash
-        if: steps.built-base-js.outputs.cache-hit != 'true'
-        working-directory: ./editors/code/base
-        run: ./scripts/build_js.sh
+  # build-js:
+  #   name: Bundle VSCode extension JS
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         fetch-depth: 0 # shallow clone for speed
+  #     - name: cache the built JS
+  #       uses: actions/cache@v3
+  #       id: built-base-js
+  #       with:
+  #         path: ./editors/code/base/dist/main.min.common.js
+  #         key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
+  #     - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
+  #       if: steps.built-base-js.outputs.cache-hit != 'true'
+  #       with:
+  #         version: 8
+  #     - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
+  #       if: steps.built-base-js.outputs.cache-hit != 'true'
+  #       with:
+  #         node-version: 18
+  #         cache: "pnpm"
+  #         cache-dependency-path: |
+  #           ./editors/code/base/pnpm-lock.yaml
+  #           ./editors/code/pro/pnpm-lock.yaml
+  #     - run: pnpm install --frozen-lockfile
+  #       working-directory: editors/code/base
+  #       if: steps.built-base-js.outputs.cache-hit != 'true'
+  #     - name: modify $PATH
+  #       shell: bash
+  #       working-directory: ./editors/code/base
+  #       run: |
+  #         export PATH=${PWD}/node_modules/.bin:$PATH
+  #         echo PATH=$PATH | tee -a $GITHUB_ENV
+  #     - name: check the tmLanguage up-to-date
+  #       if: steps.built-base-js.outputs.cache-hit != 'true'
+  #       shell: bash
+  #       working-directory: ./editors/code/base
+  #       run: |
+  #         ./scripts/build_textmate.sh
+  #         git --no-pager diff --exit-code -- src/tmLanguage.json
+  #     - name: build the JS if changed
+  #       shell: bash
+  #       if: steps.built-base-js.outputs.cache-hit != 'true'
+  #       working-directory: ./editors/code/base
+  #       run: ./scripts/build_js.sh
+  #     - name: upload bundled JS
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: main-js
+  #         path: ./editors/code/base/dist/main.min.common.js
+  # build-vsix:
+  #   name: Build VSCode extensions
+  #   needs: [build-bin, build-js]
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false # to see what builds/what fails
+  #     matrix:
+  #       include:
+  #         - os: windows-latest
+  #           native:
+  #             target: x86_64-pc-windows-msvc
+  #             vscode-target: win32-x64
+  #         - os: ubuntu-latest
+  #           native:
+  #             target: x86_64-unknown-linux-gnu
+  #             vscode-target: linux-x64 # todo: fully-static MUSL?
+  #           cross:
+  #             target: aarch64-unknown-linux-gnu
+  #             vscode-target: linux-arm64
+  #         - os: macos-latest
+  #           native:
+  #             target: x86_64-apple-darwin
+  #             vscode-target: darwin-x64x
+  #           cross:
+  #             target: aarch64-apple-darwin
+  #             vscode-target: darwin-arm64
+  #   steps:
+  #     - name: "download native binary: ${{ matrix.native.target }}"
+  #       uses: actions/download-artifact@v3
+  #       # https://github.com/actions/download-artifact
+  #       with:
+  #         name: cconvention-base-${{ matrix.native.target }}
+  #         path: ./target/${{ matrix.native.target }}/release/
+  #     - name: "download bundled JS"
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: main-js
+  #         path: ./editors/code/base/dist/
+  #     - name: "download cross binary: ${{ matrix.cross.target || '<skip>' }}"
+  #       uses: actions/download-artifact@v3
+  #       if: matrix.cross.target
+  #       with:
+  #         name: cconvention-base-${{ matrix.cross.target }}
+  #         path: ./target/${{ matrix.cross.target }}/release/
+  #     - run: |
+  #         if [ -d ./target/${{ matrix.native.target }}/release/ ]; then
+  #           ls -l ./target/${{ matrix.native.target }}/release/
+  #         else
+  #           echo "missing ./target/${{ matrix.native.target }}/release/"
+  #         fi
 
-  build-vsix:
-    name: Build VSCode extensions
-    needs: [build-bin, build-js]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false # to see what builds/what fails
-      matrix:
-        include:
-          - os: windows-latest
-            native:
-              target: x86_64-pc-windows-msvc
-              vscode-target: win32-x64
-          - os: ubuntu-latest
-            native:
-              target: x86_64-unknown-linux-gnu
-              vscode-target: linux-x64 # todo: fully-static MUSL?
-            cross:
-              target: aarch64-unknown-linux-gnu
-              vscode-target: linux-arm64
-          - os: macos-latest
-            native:
-              target: x86_64-apple-darwin
-              vscode-target: darwin-x64x
-            cross:
-              target: aarch64-apple-darwin
-              vscode-target: darwin-arm64
-    steps:
-      - uses: actions/download-artifact@v3
-        # https://github.com/actions/download-artifact
-        with:
-          name: cconvention-base-${{ matrix.native.target }}
-          path: ./target/${{ matrix.native.target }}/release/
-      - uses: actions/download-artifact@v3
-        if: matrix.cross.target
-        with:
-          name: cconvention-base-${{ matrix.cross.target }}
-          path: ./target/${{ matrix.native.target }}/release/
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # shallow clone for speed
-      - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
-        with:
-          version: 8
-      - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
-        with:
-          node-version: 18
-          cache: "pnpm"
-          cache-dependency-path: |
-            ./editors/code/base/pnpm-lock.yaml
-            ./editors/code/pro/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: editors/code/base
-      - name: modify $PATH
-        shell: bash
-        working-directory: ./editors/code/base
-        run: |
-          export PATH=${PWD}/node_modules/.bin:$PATH
-          echo PATH=$PATH | tee -a $GITHUB_ENV
-      - name: "check native debuginfo: ${{ matrix.native.target }}"
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
-          else suffix=""
-          fi
+  #         if [ -d ./target/${{ matrix.cross.target }}/release/ ]; then
+  #           ls -l ./target/${{ matrix.cross.target }}/release/
+  #         else
+  #           echo "missing ./target/${{ matrix.cross.target }}/release/"
+  #         fi
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         fetch-depth: 0 # shallow clone for speed
+  #     - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
+  #       with:
+  #         version: 8
+  #     - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
+  #       with:
+  #         node-version: 18
+  #         cache: "pnpm"
+  #         cache-dependency-path: |
+  #           ./editors/code/base/pnpm-lock.yaml
+  #           ./editors/code/pro/pnpm-lock.yaml
+  #     - run: pnpm install --frozen-lockfile
+  #       working-directory: editors/code/base
+  #     - name: modify $PATH
+  #       shell: bash
+  #       working-directory: ./editors/code/base
+  #       run: |
+  #         export PATH=${PWD}/node_modules/.bin:$PATH
+  #         echo PATH=$PATH | tee -a $GITHUB_ENV
+  #     - name: "check native debuginfo: ${{ matrix.native.target }}"
+  #       run: |
+  #         command -v sentry-cli || echo "missing sentry-cli"
+  #         if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
+  #         else suffix=""
+  #         fi
 
-          bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
-          sentry-cli debug-files check $bin
-          # TODO: check pdb, .debug if present
-      - name: build the ${{ matrix.native.vscode-target }} vsix
-        shell: bash
-        run: |
-          ./scripts/build_vsix.sh \
-            --version=base        \
-            --profile=release     \
-            --target=${{ matrix.native.vscode-target }}
-      - name: upload ${{ matrix.native.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+  #         bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
+  #         echo bin=$bin
+  #         stat $bin || echo "$bin not found"
+  #         sentry-cli debug-files check $bin
+  #       # TODO: check pdb, .debug if present
+  #     - name: build the ${{ matrix.native.vscode-target }} vsix
+  #       shell: bash
+  #       run: |
+  #         ./scripts/build_vsix.sh \
+  #           --version=base        \
+  #           --profile=release     \
+  #           --target=${{ matrix.native.vscode-target }}
+  #     - name: upload ${{ matrix.native.vscode-target }} vsix
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: cconvention-${{matrix.native.vscode-target}}.vsix
+  #         path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
 
-      - name: "check cross debuginfo: ${{ matrix.cross.target || '<skip>'}}"
-        if: matrix.cross.target
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
-          else suffix=""
-          fi
+  #     - name: "check cross debuginfo: ${{ matrix.cross.target || '<skip>'}}"
+  #       if: matrix.cross.target
+  #       run: |
+  #         if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
+  #         else suffix=""
+  #         fi
 
-          bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
-          sentry-cli debug-files check $bin
-      - name: build the ${{ matrix.cross.vscode-target }} vsix
-        if: matrix.cross.target
-        shell: bash
-        run: |
-          ./scripts/build_vsix.sh \
-            --version=base        \
-            --profile=release     \
-            --target=${{ matrix.cross.vscode-target }}
-      - name: upload ${{ matrix.cross.vscode-target }} vsix
-        if: matrix.cross.target
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-${{matrix.cross.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+  #         bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
+  #         sentry-cli debug-files check $bin
+  #     - name: build the ${{ matrix.cross.vscode-target }} vsix
+  #       if: matrix.cross.target
+  #       shell: bash
+  #       run: |
+  #         ./scripts/build_vsix.sh \
+  #           --version=base        \
+  #           --profile=release     \
+  #           --target=${{ matrix.cross.vscode-target }}
+  #     - name: upload ${{ matrix.cross.vscode-target }} vsix
+  #       if: matrix.cross.target
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: cconvention-${{matrix.cross.vscode-target}}.vsix
+  #         path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
 
