@@ -45,7 +45,7 @@ derive_cargo_cmd() {
 
   local cmd="cargo"
   case "$use_zig" in
-    true) cmd="$cmd --release" ;;
+    true) cmd="$cmd zigbuild" ;;
     *) cmd="$cmd build";;
   esac
   case "$profile" in

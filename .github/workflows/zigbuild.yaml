@@ -106,8 +106,16 @@ jobs:
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
+      # - name: cache cross build"
+      #   uses: actions/cache@v3
+      #   if: matrix.cross.target
+      #   id: cross-cache
+      #   with:
+      #     path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+      #     key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "cross build: ${{ matrix.cross.target }}"
         if: matrix.cross.target
+        # if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
         run: |
           target="${{ matrix.cross.target }}"
           use_zig="${{ matrix.cross.zig || 'false' }}"
@@ -117,3 +125,9 @@ jobs:
             --profile=release                         \
             --target="$target"                        \
             --zig="$use_zig"
+      # - name: upload ${{ matrix.cross.target }} bin
+      #   if: matrix.cross.target
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: cconvention-base-${{matrix.cross.target}}
+      #     path: ./target/${{matrix.cross.target}}/release/base_language_server*
