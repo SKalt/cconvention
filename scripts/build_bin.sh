@@ -142,6 +142,7 @@ build_bin() {
           else
             log_errr "no dSYM found at ${bin_path}.dSYM"
             ls -al "$bin_path"*
+            # FIXME: dSYM not generated?
           fi
           ;;
         dwp) # DWARF, from ELF
@@ -161,9 +162,6 @@ build_bin() {
           ;;
       esac
       # see also: https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
-
-  #   # TODO: upload the debug symbols to Sentry
-  #   # sentry-cli debug-file upload --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"
     ;;
   esac
 }

@@ -25,15 +25,15 @@ rust_to_vsce_target() {
   local target=$1
   case "$target" in
   "") derive_default_target && return 0 ;;
-  x86_64-pc-windows-msvc) printf "win32-x64" ;;
-  x86_64-unknown-linux-gnu) printf "linux-x64" ;;
-  x86_64-apple-darwin) printf "darwin-x64" ;;
-  aarch64-apple-darwin) printf "darwin-arm64" ;;
+  x86_64-pc-windows-msvc)    printf "win32-x64"    ;;
+  x86_64-unknown-linux-gnu)  printf "linux-x64"    ;;
+  aarch64-unknown-linux-gnu) printf "linux-arm64"  ;;
+  x86_64-apple-darwin)       printf "darwin-x64"   ;;
+  aarch64-apple-darwin)      printf "darwin-arm64" ;;
 
   # TODO: support other common targets:
   # alpine-arm64) ;;
   # alpine-x64) ;;
-  # linux-arm64) ;;
   # linux-armhf) ;;
   # web) ;;
   # win32-ia32) ;;

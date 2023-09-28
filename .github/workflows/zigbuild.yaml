@@ -1,4 +1,4 @@
-name: build2
+name: build and release
 on:
   workflow_dispatch: # for manual debugging
   push:
@@ -6,7 +6,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
-  publish:
+  build-bin:
     strategy:
       fail-fast: false # to see what builds/what fails
       matrix:
@@ -36,10 +36,6 @@ jobs:
               target: aarch64-apple-darwin
               vscode-target: darwin-arm64
               zig: true
-          # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
-          # - os: macos-latest
-          #   target: aarch64-apple-darwin
-          #   vscode-target: darwin-arm64
 
     name: Build (${{ matrix.native.target }})
     runs-on: ${{ matrix.os }}
@@ -47,29 +43,61 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0 # shallow clone for speed
+      - name: "cache native binary build: ${{ matrix.native.target }}"
+        uses: actions/cache@v3
+        id: native-cache
+        with:
+          path: ./target/${{ matrix.native.target }}/release/base_language_server*
+          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
+      - name: "cache cross binary build: ${{ matrix.cross.target }}"
+        uses: actions/cache@v3
+        if: matrix.cross.target
+        id: cross-cache
+        with:
+          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+          key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+      - id: boot
+        shell: bash
+        run: |
+          native="${{ steps.native-cache.outputs.cache-hit != 'true' || false }}"
+          cross="${{ matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true' || false }}"
+          {
+            case "$native/$cross" in
+              false/false) echo "init=false" ;;
+              *) echo "init=true" ;;
+            esac
+            echo "native=$native"
+            echo "cross=$cross"
+          } | tee -a $GITHUB_OUTPUT
       - name: set MacOS SDKROOT and MACOSX_DEPLOYMENT_TARGET
         # see https://stackoverflow.com/questions/66849112/how-do-i-cross-compile-a-rust-application-from-macos-x86-to-macos-silicon
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' && steps.boot.outputs.init == 'true'
         run: |
           {
             echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)"
             echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)"
           } | tee -a $GITHUB_ENV
       - name: "Install rust toolchain"
+        if: steps.boot.outputs.init == 'true'
         shell: bash
         run: |
           rustup toolchain install stable --profile minimal
-          rustup target add ${{ matrix.native.target }}
           rustup component add rust-src
           rustup component add llvm-tools-preview # 32mb
         # pulling 3x32MB of llvm tools is still better than pushing+pulling
         # 6x60MB of the built binary
+      - name: "install native rust target: ${{ matrix.native.target }}"
+        if: steps.boot.outputs.native == 'true'
+        run: rustup target add ${{ matrix.native.target }}
       - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
+        if: steps.boot.outputs.init == 'true'
       - name: setup zig
+        if: steps.boot.outputs.init == 'true'
         shell: bash
         run: python3 -m pip install ziglang cargo-zigbuild
       - name: modify $PATH
         shell: bash
+        if: steps.boot.outputs.init == 'true'
         run: |
           {
             site_packages="$(
@@ -83,19 +111,6 @@ jobs:
             export PATH="$bins_dir:$site_packages/ziglang:$PATH"
             echo "PATH=$PATH"
           } | tee -a $GITHUB_ENV | tr ':' '\n' | sed 's/^/ -  /g'
-      - name: cache native binary build
-        uses: actions/cache@v3
-        id: native-cache
-        with:
-          path: ./target/${{ matrix.native.target }}/release/base_language_server*
-          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
-      - name: "cache cross build: ${{ matrix.cross.target }}"
-        uses: actions/cache@v3
-        if: matrix.cross.target
-        id: cross-cache
-        with:
-          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
-          key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "native build: ${{ matrix.native.target }}"
         shell: bash
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -115,11 +130,10 @@ jobs:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
       - name: "add rustup cross-compilation target: ${{ matrix.cross.target || 'none' }}"
-        if: matrix.cross.target
+        if: steps.boot.outputs.cross == 'true'
         run: rustup target add ${{ matrix.cross.target }}
       - name: "cross build: ${{ matrix.cross.target || 'none' }}"
-        if: matrix.cross.target
-        # if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
+        if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
         run: |
           target="${{ matrix.cross.target }}"
           use_zig="${{ matrix.cross.zig || 'false' }}"
@@ -129,9 +143,160 @@ jobs:
             --profile=release                         \
             --target="$target"                        \
             --zig="$use_zig"
-      # - name: upload ${{ matrix.cross.target }} bin
-      #   if: matrix.cross.target
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: cconvention-base-${{matrix.cross.target}}
-      #     path: ./target/${{matrix.cross.target}}/release/base_language_server*
+      - name: upload ${{ matrix.cross.target }} bin
+        if: matrix.cross.target
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-base-${{matrix.cross.target}}
+          path: ./target/${{matrix.cross.target}}/release/base_language_server*
+  build-js:
+    name: Bundle VSCode extension JS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # shallow clone for speed
+      - name: cache the built JS
+        uses: actions/cache@v3
+        id: built-base-js
+        with:
+          path: ./editors/code/base/dist/main.min.common.js
+          key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
+      - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+        with:
+          version: 8
+      - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+        with:
+          node-version: 18
+          cache: "pnpm"
+          cache-dependency-path: |
+            ./editors/code/base/pnpm-lock.yaml
+            ./editors/code/pro/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: editors/code/base
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+      - name: modify $PATH
+        shell: bash
+        working-directory: ./editors/code/base
+        run: |
+          export PATH=${PWD}/node_modules/.bin:$PATH
+          echo PATH=$PATH | tee -a $GITHUB_ENV
+      - name: check the tmLanguage up-to-date
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: ./editors/code/base
+        run: |
+          ./scripts/build_textmate.sh
+          git --no-pager diff --exit-code -- src/tmLanguage.json
+      - name: build the JS if changed
+        shell: bash
+        if: steps.built-base-js.outputs.cache-hit != 'true'
+        working-directory: ./editors/code/base
+        run: ./scripts/build_js.sh
+
+  build-vsix:
+    name: Build VSCode extensions
+    needs: [build-bin, build-js]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # to see what builds/what fails
+      matrix:
+        include:
+          - os: windows-latest
+            native:
+              target: x86_64-pc-windows-msvc
+              vscode-target: win32-x64
+          - os: ubuntu-latest
+            native:
+              target: x86_64-unknown-linux-gnu
+              vscode-target: linux-x64 # todo: fully-static MUSL?
+            cross:
+              target: aarch64-unknown-linux-gnu
+              vscode-target: linux-arm64
+          - os: macos-latest
+            native:
+              target: x86_64-apple-darwin
+              vscode-target: darwin-x64x
+            cross:
+              target: aarch64-apple-darwin
+              vscode-target: darwin-arm64
+    steps:
+      - uses: actions/download-artifact@v3
+        # https://github.com/actions/download-artifact
+        with:
+          name: cconvention-base-${{ matrix.native.target }}
+          path: ./target/${{ matrix.native.target }}/release/
+      - uses: actions/download-artifact@v3
+        if: matrix.cross.target
+        with:
+          name: cconvention-base-${{ matrix.cross.target }}
+          path: ./target/${{ matrix.native.target }}/release/
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # shallow clone for speed
+      - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
+        with:
+          version: 8
+      - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
+        with:
+          node-version: 18
+          cache: "pnpm"
+          cache-dependency-path: |
+            ./editors/code/base/pnpm-lock.yaml
+            ./editors/code/pro/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: editors/code/base
+      - name: modify $PATH
+        shell: bash
+        working-directory: ./editors/code/base
+        run: |
+          export PATH=${PWD}/node_modules/.bin:$PATH
+          echo PATH=$PATH | tee -a $GITHUB_ENV
+      - name: "check native debuginfo: ${{ matrix.native.target }}"
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
+          else suffix=""
+          fi
+
+          bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
+          sentry-cli debug-files check $bin
+          # TODO: check pdb, .debug if present
+      - name: build the ${{ matrix.native.vscode-target }} vsix
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=base        \
+            --profile=release     \
+            --target=${{ matrix.native.vscode-target }}
+      - name: upload ${{ matrix.native.vscode-target }} vsix
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.native.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+
+      - name: "check cross debuginfo: ${{ matrix.cross.target || '<skip>'}}"
+        if: matrix.cross.target
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
+          else suffix=""
+          fi
+
+          bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
+          sentry-cli debug-files check $bin
+      - name: build the ${{ matrix.cross.vscode-target }} vsix
+        if: matrix.cross.target
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=base        \
+            --profile=release     \
+            --target=${{ matrix.cross.vscode-target }}
+      - name: upload ${{ matrix.cross.vscode-target }} vsix
+        if: matrix.cross.target
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.cross.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+
