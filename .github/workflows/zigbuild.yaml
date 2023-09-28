@@ -19,18 +19,21 @@ jobs:
           #     vscode-target: win32-x64
           # x86 linux
           - os: ubuntu-latest
-            native:
+            native: # works great
               target: x86_64-unknown-linux-gnu
               vscode-target: linux-x64 # todo: fully-static MUSL?
+              zig: false
             # cross:
             #   target: aarch64-unknown-linux-gnu
             #   vscode-target: linux-arm64
+            #   zig: true
           # TODO: arm64 linux
           # x86 macos
           - os: macos-latest
             native:
               target: x86_64-apple-darwin
               vscode-target: darwin-x64x
+              zig: true
           # arm64 macos
           # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
           # - os: macos-latest
@@ -45,38 +48,72 @@ jobs:
           fetch-depth: 0 # shallow clone for speed
       - name: set MacOS SDKROOT and MACOSX_DEPLOYMENT_TARGET
         # see https://stackoverflow.com/questions/66849112/how-do-i-cross-compile-a-rust-application-from-macos-x86-to-macos-silicon
+        if: matrix.os == 'macos-latest'
         run: |
           {
             echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)"
             echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)"
           } | tee -a $GITHUB_ENV
       - name: "Install rust toolchain"
-        if: steps.cache-bin.outputs.cache-hit != 'true'
         shell: bash
         run: |
           rustup toolchain install stable --profile minimal
           rustup target add ${{ matrix.native.target }}
           rustup component add rust-src
           rustup component add llvm-tools-preview # 32mb
-          bins_dir="$(rustup run stable rustc --print sysroot)/lib/rustlib/${{ matrix.native.target }}/bin"
-          export PATH="$bins_dir:$PATH"
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          # pulling 3x32MB of llvm tools is still better than pushing+pulling
-          # 6x60MB of the built binary
+        # pulling 3x32MB of llvm tools is still better than pushing+pulling
+        # 6x60MB of the built binary
       - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
-      - name: "native build: ${{matrix.native.target}}}"
+      - name: setup zig
+        shell: bash
+        run: python3 -m pip install ziglang cargo-zigbuild
+      - name: modify $PATH
         shell: bash
         run: |
-          target=${{ matrix.native.target }}
+          {
+            site_packages="$(
+              python3 -c 'import sys, pathlib as p; [
+                print(i) for i in sys.path
+                if p.Path(i).name == "site-packages"
+              ]'
+            )"
+            _sysroot="$(rustup run stable rustc --print sysroot)"
+            bins_dir="$_sysroot/lib/rustlib/${{ matrix.native.target }}/bin"
+            export PATH="$bins_dir:$site_packages/ziglang:$PATH"
+            echo "PATH=$PATH"
+          } | tee -a $GITHUB_ENV | tr ':' '\n' | sed 's/^/ -  /g'
+      - name: cache native binary build
+        uses: actions/cache@v3
+        id: native-cache
+        with:
+          path: ./target/${{ matrix.native.target }}/release/base_language_server*
+          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+      - name: "native build: ${{ matrix.native.target }}"
+        shell: bash
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          target="${{ matrix.native.target }}"
+          use_zig="${{ matrix.native.zig || 'false' }}"
           export RUSTFLAGS="-Clink-args=-Wl,--build-id=sha1"
-          rust-lld --version && rust-lld --help || echo "rust-lld missing"
-          ./scripts/build_bin.sh \
-            --version=base       \
-            --profile=release    \
-            --target ${{matrix.native.target}}
-      # TODO: cross build
+          ./scripts/build_bin.sh                      \
+            --version=base                            \
+            --profile=release                         \
+            --target="$target"                        \
+            --zig="$use_zig"
+
       - name: upload ${{ matrix.native.target }} bin
         uses: actions/upload-artifact@v3
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
+      - name: "cross build: ${{ matrix.cross.target }}"
+        if: matrix.cross.target
+        run: |
+          target="${{ matrix.cross.target }}"
+          use_zig="${{ matrix.cross.zig || 'false' }}"
+          export RUSTFLAGS="-Clink-args=-Wl,--build-id=sha1"
+          ./scripts/build_bin.sh                      \
+            --version=base                            \
+            --profile=release                         \
+            --target="$target"                        \
+            --zig="$use_zig"

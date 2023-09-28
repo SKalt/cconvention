@@ -6,6 +6,9 @@
 ###   --version: base or pro (default: base)
 ###   --profile: debug or release (default: debug)
 ###   --target: one of the target identifiers listed by `rustup target list`
+###     (default: x86_64-unknown-linux-gnu)
+###    --zig: whether to use `cargo zigbuild` to build the binary (default: false)
+
 
 if [[ "${BASH_SOURCE[0]}" = */* ]]; then this_dir="${BASH_SOURCE[0]%/*}"; else this_dir=.; fi
 this_dir="$(cd "${this_dir}" && pwd)"
@@ -38,16 +41,22 @@ derive_cargo_cmd() {
   local profile=$1
   local variant=$2
   local target=$3
+  local use_zig=$4
 
-  local cmd="cargo build"
+  local cmd="cargo"
+  case "$use_zig" in
+    true) cmd="$cmd --release" ;;
+    *) cmd="$cmd build";;
+  esac
+  case "$profile" in
+    debug) ;;
+    release) cmd="$cmd --release" ;;
+    *) log_fail "invalid profile: $profile" ;;
+  esac
+
   cmd="$cmd --bin ${variant}"
   cmd="$cmd --target ${target}"
   cmd="$cmd --all-features --timings"
-  case "$profile" in
-  debug) ;;
-  release) cmd="$cmd --release" ;;
-  *) log_fail "invalid profile: $profile" ;;
-  esac
   printf "%s" "$cmd"
 }
 
@@ -66,13 +75,17 @@ build_bin() {
   local target=$1
   local version=$2
   local profile=$3
+  local use_zig=$4
   cd "$repo_root" || exit 1
   local variant="${version}_language_server"
   local build_cmd=""
-  build_cmd="$(derive_cargo_cmd "$profile" "$variant" "$target")"
+  build_cmd="$(derive_cargo_cmd "$profile" "$variant" "$target" "$use_zig")"
 
   require_cli "cargo"
-
+  if [ "$use_zig" = true ]; then
+    require_cli "zig"
+    require_cli "cargo-zigbuild"
+  fi
   local objcopy
   objcopy="$(find_objcopy)"
   log_dbug "using objcopy: $objcopy"
@@ -153,11 +166,13 @@ main() {
     case "$1" in
     -h | --help) usage && exit 0 ;;
     --version=*) version="${1#*=}" && shift ;;
-    --version) version="$2" && shift 2 ;;
     --profile=*) profile="${1#*=}" && shift ;;
+    --target=*)  target="${1#*=}"  && shift ;;
+    --zig=*)     use_zig="${1#*=}" && shift ;;
+    --version) version="$2" && shift 2 ;;
     --profile) profile="$2" && shift 2 ;;
-    --target=*) target="${1#*=}" && shift ;;
-    --target) target="$2" && shift 2 ;;
+    --target)  target="$2"  && shift 2 ;;
+    --zig)     use_zig=true && shift   ;;
     *) echo "unexpected argument: $1" >&2 && usage >&2 && exit 1 ;;
     esac
   done
@@ -166,7 +181,7 @@ main() {
   profile="$(parse_profile "$profile")"
 
   log_dbug "log file: ${log_file}"
-  build_bin "$target" "$version" "$profile"
+  build_bin "$target" "$version" "$profile" "$use_zig"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

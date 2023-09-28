@@ -51,7 +51,7 @@ pub trait LintConfig {
                 })
                 .map(|f| f(doc))
                 .map(|mut v| {
-                    for mut diagnostic in v.iter_mut() {
+                    for diagnostic in v.iter_mut() {
                         if diagnostic.severity.is_none() {
                             match &diagnostic.code {
                                 Some(lsp_types::NumberOrString::String(code)) => {
