@@ -83,6 +83,7 @@ build_bin() {
 
   require_cli "cargo"
   if [ "$use_zig" = true ]; then
+    log_dbug "using cargo-zigbuild"
     require_cli "zig"
     require_cli "cargo-zigbuild"
   fi
@@ -98,10 +99,9 @@ build_bin() {
   bin_path="$(derive_rust_bin_path "$version" "$profile" "$target" "$repo_root")"
   log_dbug "expected bin path: ${bin_path}"
 
-  # local debug_ext
-  # debug_ext="$(derive_rust_debug_file_ext "$target")"
-  # local debug_file="${bin_path}.${debug_ext}"
-  # log_dbug "expected debug file: ${debug_file}"
+  local debug_ext
+  debug_ext="$(derive_rust_debug_file_ext "$target")"
+
 
   log_dbug "running: $build_cmd"
   log_info "building ${bin_path}"
@@ -132,33 +132,35 @@ build_bin() {
     log_info "skipping debug symbol stripping for debug build"
     ;;
     release)
-      # log_dbug "debug file extension: ${debug_ext}"
-      # find ./target -type f -name "*.${debug_ext}" | log_stdin "  - "
-      # see https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
-
-      log_info "stripping debug symbols from ${bin_path}"
-      "$objcopy" --only-keep-debug "$bin_path" "$bin_path.debug"
-      log_dbug "debug symbols are stored in ${bin_path}.debug"
-
-      log_dbug "stripping debug symbols from $bin_path"
-      log_dbug "before: $(du -h "$bin_path")"
-      case "$target" in
-        *-apple-darwin)
-          # MacOS: the binary is a Mach-O executable
-          # and llvm-objcopy doesn't support --strip-unneeded for MachO
-          # see https://github.com/llvm/llvm-project/blob/23ef8bf9c0f338ee073c6c1b553c42e46d2f22ad/llvm/lib/ObjCopy/ConfigManager.cpp#L47
-          "$objcopy" --strip-debug "$bin_path"
+      log_dbug "debug file extension: ${debug_ext}"
+      case "$debug_ext" in
+        pdb)
+          find ./target -type f -name "*.${debug_ext}" | log_stdin "  - "
           ;;
-        *)
+        dSYM)
+          if (stat "$bin_path.dSYM"); then ls -al "$bin_path.dSYM";
+          else
+            log_errr "no dSYM found at ${bin_path}.dSYM"
+            ls -al "$bin_path"*
+          fi
+          ;;
+        dwp) # DWARF, from ELF
+          log_info "splitting debug symbols from $bin_path"
+          "$objcopy" --only-keep-debug --compress-debug-sections "$bin_path" "$bin_path.debug"
+          log_dbug "debug symbols are stored in ${bin_path}.debug"
+          log_dbug " debug: $(du -h "$bin_path.debug")"
+
+          log_dbug "stripping debug symbols from $bin_path"
+          log_dbug "before: $(du -h "$bin_path")"
           "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+          log_dbug " after: $(du -h "$bin_path")"
+
+          log_dbug "linking debug symbols to $bin_path"
+          "$objcopy" --add-gnu-debuglink="${bin_path}.debug" "$bin_path"
+          log_dbug "debug symbols linked to $bin_path"
           ;;
       esac
-      log_dbug " after: $(du -h "$bin_path")"
-      log_dbug "debug symbols stripped from ${bin_path}"
-
-      log_dbug "linking debug symbols to ${bin_path}"
-      "$objcopy" --add-gnu-debuglink="$bin_path.debug" "$bin_path"
-      log_dbug "debug symbols linked to ${bin_path}"
+      # see also: https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 
   #   # TODO: upload the debug symbols to Sentry
   #   # sentry-cli debug-file upload --wait -o "${ORG}" -p "${PROJECT}" "$bin_path.debug"

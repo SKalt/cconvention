@@ -18,9 +18,8 @@ jobs:
             native:
               target: x86_64-pc-windows-msvc
               vscode-target: win32-x64
-          # x86 linux
           - os: ubuntu-latest
-            native: # works great
+            native:
               target: x86_64-unknown-linux-gnu
               vscode-target: linux-x64 # todo: fully-static MUSL?
               zig: false
@@ -28,14 +27,15 @@ jobs:
               target: aarch64-unknown-linux-gnu
               vscode-target: linux-arm64
               zig: true
-          # TODO: arm64 linux
-          # x86 macos
           - os: macos-latest
             native:
               target: x86_64-apple-darwin
               vscode-target: darwin-x64x
               zig: true
-          # arm64 macos
+            cross:
+              target: aarch64-apple-darwin
+              vscode-target: darwin-arm64
+              zig: true
           # FIXME: the host is still x86_64; need to install aarch64-apple-darwin binutils
           # - os: macos-latest
           #   target: aarch64-apple-darwin
@@ -88,14 +88,14 @@ jobs:
         id: native-cache
         with:
           path: ./target/${{ matrix.native.target }}/release/base_language_server*
-          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
-      # - name: cache cross build"
-      #   uses: actions/cache@v3
-      #   if: matrix.cross.target
-      #   id: cross-cache
-      #   with:
-      #     path: ./target/${{ matrix.cross.target }}/release/base_language_server*
-      #     key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
+      - name: "cache cross build: ${{ matrix.cross.target }}"
+        uses: actions/cache@v3
+        if: matrix.cross.target
+        id: cross-cache
+        with:
+          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+          key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "native build: ${{ matrix.native.target }}"
         shell: bash
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -114,7 +114,10 @@ jobs:
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
-      - name: "cross build: ${{ matrix.cross.target }}"
+      - name: "add rustup cross-compilation target: ${{ matrix.cross.target || 'none' }}"
+        if: matrix.cross.target
+        run: rustup target add ${{ matrix.cross.target }}
+      - name: "cross build: ${{ matrix.cross.target || 'none' }}"
         if: matrix.cross.target
         # if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
         run: |

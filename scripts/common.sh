@@ -147,10 +147,11 @@ parse_rust_target() {
     return 0
   fi
   case "$target" in
-  x86_64-pc-windows-msvc) printf "x86_64-pc-windows-msvc" ;;
-  x86_64-unknown-linux-gnu) printf "x86_64-unknown-linux-gnu" ;;
-  x86_64-apple-darwin) printf "x86_64-apple-darwin" ;;
-  aarch64-apple-darwin) printf "aarch64-apple-darwin" ;;
+  x86_64-pc-windows-msvc)    printf "x86_64-pc-windows-msvc"     ;;
+  x86_64-unknown-linux-gnu)  printf "x86_64-unknown-linux-gnu"   ;;
+  aarch64-unknown-linux-gnu) printf "aarch64-unknown-linux-gnu"  ;;
+  x86_64-apple-darwin)       printf "x86_64-apple-darwin"        ;;
+  aarch64-apple-darwin)      printf "aarch64-apple-darwin"       ;;
   *) log_fail "invalid or currently-unsupported target: $target" ;;
   esac
 }
@@ -164,6 +165,7 @@ derive_rust_debug_file_ext() {
   x86_64-apple-darwin) printf "dSYM" ;;
   aarch64-apple-darwin) printf "dSYM" ;;
   x86_64-unknown-linux-gnu) printf "dwp" ;;
+  aarch64-unknown-linux-gnu) printf "dwp" ;;
   *) log_fail "invalid or currently-unsupported target: $target" ;;
   esac
 }
