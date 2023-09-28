@@ -14,19 +14,20 @@ jobs:
           # each `target` is picked from `rustup target list` and each
           # `vscode-target` is drawn from `vsce publish --help`
           # x86 windows
-          # - os: windows-latest
-          #     target: x86_64-pc-windows-msvc
-          #     vscode-target: win32-x64
+          - os: windows-latest
+            native:
+              target: x86_64-pc-windows-msvc
+              vscode-target: win32-x64
           # x86 linux
           - os: ubuntu-latest
             native: # works great
               target: x86_64-unknown-linux-gnu
               vscode-target: linux-x64 # todo: fully-static MUSL?
               zig: false
-            # cross:
-            #   target: aarch64-unknown-linux-gnu
-            #   vscode-target: linux-arm64
-            #   zig: true
+            cross:
+              target: aarch64-unknown-linux-gnu
+              vscode-target: linux-arm64
+              zig: true
           # TODO: arm64 linux
           # x86 macos
           - os: macos-latest
@@ -88,6 +89,13 @@ jobs:
         with:
           path: ./target/${{ matrix.native.target }}/release/base_language_server*
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+      # - name: cache cross build"
+      #   uses: actions/cache@v3
+      #   if: matrix.cross.target
+      #   id: cross-cache
+      #   with:
+      #     path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+      #     key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "native build: ${{ matrix.native.target }}"
         shell: bash
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -106,13 +114,6 @@ jobs:
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
-      # - name: cache cross build"
-      #   uses: actions/cache@v3
-      #   if: matrix.cross.target
-      #   id: cross-cache
-      #   with:
-      #     path: ./target/${{ matrix.cross.target }}/release/base_language_server*
-      #     key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "cross build: ${{ matrix.cross.target }}"
         if: matrix.cross.target
         # if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'

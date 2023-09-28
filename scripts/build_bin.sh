@@ -142,7 +142,17 @@ build_bin() {
 
       log_dbug "stripping debug symbols from $bin_path"
       log_dbug "before: $(du -h "$bin_path")"
-      "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+      case "$target" in
+        *-apple-darwin)
+          # MacOS: the binary is a Mach-O executable
+          # and llvm-objcopy doesn't support --strip-unneeded for MachO
+          # see https://github.com/llvm/llvm-project/blob/23ef8bf9c0f338ee073c6c1b553c42e46d2f22ad/llvm/lib/ObjCopy/ConfigManager.cpp#L47
+          "$objcopy" --strip-debug "$bin_path"
+          ;;
+        *)
+          "$objcopy" --strip-debug --strip-unneeded "$bin_path"
+          ;;
+      esac
       log_dbug " after: $(du -h "$bin_path")"
       log_dbug "debug symbols stripped from ${bin_path}"
 
