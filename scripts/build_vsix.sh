@@ -113,7 +113,6 @@ main() {
 
   # print only the directories in the file tree
   if is_installed tree; then tree -d -L 3; fi
-  ls -l "$repo_root/target/$profile"
 
   build_vsix "$version" "$profile" "$rust_target" "$repo_root"
 
