@@ -96,7 +96,7 @@ build_bin() {
   log_dbug "expected target dir: ${target_dir}"
 
   local bin_path
-  bin_path="$(derive_rust_bin_path "$version" "$profile" "$target" "$repo_root")"
+  bin_path="$(derive_rust_bin_path "$repo_root" "$target" "$profile" "$version" )"
   log_dbug "expected bin path: ${bin_path}"
 
   local debug_ext

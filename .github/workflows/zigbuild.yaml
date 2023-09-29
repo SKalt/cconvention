@@ -47,7 +47,11 @@ jobs:
         uses: actions/cache@v3
         id: native-cache
         with:
-          path: target/${{ matrix.native.target }}/release/base_language_server*
+          path: |
+            ./target/${{ matrix.native.target }}/release/base_language_server*
+            ./target/${{ matrix.native.target }}/release/base_language_server.exe
+            ./target/${{ matrix.native.target }}/release/base_language_server.pdb
+          # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
       - name: "cache cross binary build: ${{ matrix.cross.target }}"
         uses: actions/cache@v3
@@ -87,6 +91,7 @@ jobs:
         # pulling 3x32MB of llvm tools is still better than pushing+pulling
         # 6x60MB of the built binary
       - name: "install native rust target: ${{ matrix.native.target }}"
+        shell: bash
         if: steps.boot.outputs.native == 'true'
         run: rustup target add ${{ matrix.native.target }}
       - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
@@ -124,16 +129,18 @@ jobs:
             --target="$target"                        \
             --zig="$use_zig"
 
-      - name: upload ${{ matrix.native.target }} bin
+      - name: "upload native bin: ${{ matrix.native.target }}"
         uses: actions/upload-artifact@v3
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
       - name: "add rustup cross-compilation target: ${{ matrix.cross.target || 'none' }}"
         if: steps.boot.outputs.cross == 'true'
+        shell: bash
         run: rustup target add ${{ matrix.cross.target }}
       - name: "cross build: ${{ matrix.cross.target || 'none' }}"
         if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           target="${{ matrix.cross.target }}"
           use_zig="${{ matrix.cross.zig || 'false' }}"
@@ -143,7 +150,7 @@ jobs:
             --profile=release                         \
             --target="$target"                        \
             --zig="$use_zig"
-      - name: upload ${{ matrix.cross.target }} bin
+      - name: "upload cross bin: ${{ matrix.cross.target }}"
         if: matrix.cross.target
         uses: actions/upload-artifact@v3
         with:
@@ -337,7 +344,7 @@ jobs:
           ./scripts/build_vsix.sh \
             --version=base        \
             --profile=release     \
-            --target=${{ matrix.cross.vscode-target }}
+            --target=${{ matrix.cross.target }}
       - name: upload ${{ matrix.cross.vscode-target }} vsix
         if: matrix.cross.target
         uses: actions/upload-artifact@v3

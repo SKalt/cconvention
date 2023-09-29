@@ -127,17 +127,18 @@ derive_rust_target_dir() {
 }
 
 derive_rust_bin_path() {
-  local version=$1 # base or pro
-  local profile=$2 # debug or release
-  local target=$3  # e.g. x86_64-unknown-linux-gnu
-  local repo_root=$4
+  local repo_root=$1
+  local target=$2  # e.g. x86_64-unknown-linux-gnu
+  local profile=$3 # debug or release
+  local version=$4 # base or pro
   local variant="${version}_language_server"
   local target_dir
   target_dir="$(derive_rust_target_dir "$repo_root" "$target" "$profile")"
-  printf "%s/%s" "$target_dir" "$variant"
+  local result="$target_dir/$variant"
   case "$target" in
-  x86_64-pc-windows-msvc) printf ".exe" ;;
+  x86_64-pc-windows-msvc) result="$result.exe" ;;
   esac
+  printf "%s" "$result"
 }
 
 parse_rust_target() {
@@ -155,6 +156,7 @@ parse_rust_target() {
   *) log_fail "invalid or currently-unsupported target: $target" ;;
   esac
 }
+
 derive_rust_debug_file_ext() {
   local target=$1
   if [ -z "$target" ]; then
