@@ -9,5 +9,6 @@
     "esbenp.prettier-vscode",
     "timonwong.shellcheck",
     "rust-lang.rust-analyzer",
+    "griimick.vhs"
   ]
 }

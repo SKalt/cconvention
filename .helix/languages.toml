@@ -7,7 +7,7 @@ config = {}
 #^ for the language server
 
 [language.language-server]
-command = "conventional-commit-language-server"
+command = "cconvention"
 args = ["serve", "--stdio"]
 
 [language.language-server.environment]
