@@ -4,6 +4,7 @@
 !dist/server
 !package-lock.json
 !LICENSE.md
+!src/tmLanguage.json
 
 node_modules
 scripts
