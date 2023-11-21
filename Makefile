@@ -1,5 +1,5 @@
 # FIXME: this build process is pretty convoluted. It should be simplified.
-.PHONY: all help server client-js client bin tmLanguage vsix repl never test lint
+.PHONY: all help server client-js client bin tmLanguage vsix repl never test lint icon
 all: bin vsix
 
 help:
@@ -46,6 +46,13 @@ tmLanguage: ./editors/code/base/src/tmLanguage.json
 	cd ./editors/code/base && PATH=$(shell pwd)/node_modules/.bin:${PATH} ./scripts/build_textmate.sh
 # retained as a symlink in the pro version
 
+icon: ./editors/code/base/icon.png
+./editors/code/base/icon.png: \
+	./editors/code/base/icon.svg \
+	editors/code/base/pnpm-lock.yaml
+
+	cd ./editors/code/base && node ./scripts/render_base_icon.js
+
 client-js: ./editors/code/${VERSION}/dist/main.min.common.js
 ./editors/code/base/dist/main.min.common.js: \
 	editors/code/base/pnpm-lock.yaml \
@@ -68,6 +75,7 @@ vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
 ./editors/code/${VERSION}/dist/cconvention.vsix: \
 	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/dist/main.min.common.js \
+	./editors/code/${VERSION}/icon.png \
 	./editors/code/${VERSION}/src/tmLanguage.json \
 	./editors/code/${VERSION}/package.json \
 	./scripts/build_vsix.sh

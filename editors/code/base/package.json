@@ -12,6 +12,7 @@
     "url": "https://github.com/skalt/cconvention.git",
     "directory": "editors/code/base"
   },
+  "icon": "./icon.png",
   "main": "./dist/main.min.common.js",
   "scripts": {
     "build-js": "./scripts/build_js.sh",
@@ -63,6 +64,7 @@
     "esbuild": "~0.17.19",
     "js-yaml": "^4.1.0",
     "prettier": "^2.8.8",
+    "sharp": "^0.32.6",
     "tslib": "^2.6.2",
     "typescript": "^5.2.2"
   },

@@ -2,6 +2,10 @@
 
 A language server to help write [conventional commits][ccs].
 
+<p align=center>
+  <img alt="Stylized CC icon, standing for Conventional Commits or CConvention" src="./editors/code/base/icon.svg">
+</p>
+
 `git commit` on the command-line opens a [`${GIT_DIR}/COMMIT_EDITMSG`](https://git-scm.com/docs/git-commit#_files) file in your `$EDITOR` of choice.
 `cconvention` acts as a language server to provide completion, linting, and formatting.
 
@@ -15,7 +19,6 @@ This includes the names of any published tools, libraries, binaries, or extensio
 <!--
   roadmap:
     TODO: make own tree-sitter grammar?
-    TODO: settle on stable name: cconvention?
 -->
 
 ## Command-line Usage
