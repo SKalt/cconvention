@@ -172,6 +172,7 @@ main() {
   local version="${VERSION:-base}"
   local profile="${PROFILE:-debug}"
   local target="${TARGET:-x86_64-unknown-linux-gnu}"
+  local use_zig="${USE_ZIG:-false}"
   while [ -n "${1:-}" ]; do
     case "$1" in
     -h | --help) usage && exit 0 ;;
