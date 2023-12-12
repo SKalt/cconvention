@@ -6,8 +6,6 @@ on:
       - "**.sh"
       - ".envrc"
   push:
-    branches:
-      - main
     paths:
       - "**.sh"
       - ".envrc"

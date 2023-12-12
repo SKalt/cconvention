@@ -43,9 +43,26 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0 # shallow clone for speed
-      - name: "cache native binary build: ${{ matrix.native.target }}"
+      - name: "cache native base binary build: ${{ matrix.native.target }}"
         uses: actions/cache@v3
-        id: native-cache
+        id: native-base-cache
+        with:
+          path: |
+            ./target/${{ matrix.native.target }}/release/base_language_server*
+            ./target/${{ matrix.native.target }}/release/base_language_server.exe
+            ./target/${{ matrix.native.target }}/release/base_language_server.pdb
+          # hardcode paths in an attempt to appease windows
+          key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', 'pkg/base/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
+      - name: "cache cross  base binary build: ${{ matrix.cross.target }}"
+        uses: actions/cache@v3
+        if: matrix.cross.target
+        id: cross-base-cache
+        with:
+          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+          key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', 'pkg/pro/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+      - name: "cache native pro  binary build: ${{ matrix.native.target }}"
+        uses: actions/cache@v3
+        id: native-pro-cache
         with:
           path: |
             ./target/${{ matrix.native.target }}/release/base_language_server*
@@ -53,25 +70,31 @@ jobs:
             ./target/${{ matrix.native.target }}/release/base_language_server.pdb
           # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
-      - name: "cache cross binary build: ${{ matrix.cross.target }}"
+      - name: "cache cross  pro  binary build: ${{ matrix.cross.target }}"
         uses: actions/cache@v3
         if: matrix.cross.target
-        id: cross-cache
+        id: cross-pro-cache
         with:
           path: ./target/${{ matrix.cross.target }}/release/base_language_server*
           key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
+
       - id: boot
         shell: bash
         run: |
-          native="${{ steps.native-cache.outputs.cache-hit != 'true' || false }}"
-          cross="${{ matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true' || false }}"
+          ref_name="${{ github.ref_name }}"
+          native_base="${{ steps.native-base-cache.outputs.cache-hit != 'true'|| false }}"
+          native_pro="${{ steps.native-pro-cache.outputs.cache-hit != 'true' || false }}"
+          cross_base="${{ matrix.cross.target && steps.cross-base-cache.outputs.cache-hit != 'true' || false }}"
+          cross_pro="${{ matrix.cross.target && steps.native-pro-cache.outputs.cache-hit != 'true' || false }}"
           {
-            case "$native/$cross" in
-              false/false) echo "init=false" ;;
-              *) echo "init=true" ;;
+            case true in
+              $native_base|$native_pro|$cross_base|$cross_pro) echo "init=true" ;;
+              *) echo "init=false" ;;
             esac
-            echo "native=$native"
-            echo "cross=$cross"
+            echo "native_base=$native_base"
+            echo "cross_base=$cross_base"
+            echo "native_pro=$native_pro"
+            echo "cross_pro=$cross_pro"
           } | tee -a $GITHUB_OUTPUT
       - name: set MacOS SDKROOT and MACOSX_DEPLOYMENT_TARGET
         # see https://stackoverflow.com/questions/66849112/how-do-i-cross-compile-a-rust-application-from-macos-x86-to-macos-silicon
@@ -92,7 +115,7 @@ jobs:
         # 6x60MB of the built binary
       - name: "install native rust target: ${{ matrix.native.target }}"
         shell: bash
-        if: steps.boot.outputs.native == 'true'
+        if: steps.boot.outputs.native_base == 'true' || steps.boot.outputs.native_pro == 'true'
         run: rustup target add ${{ matrix.native.target }}
       - uses: Swatinem/rust-cache@v2 # see https://github.com/Swatinem/rust-cache
         if: steps.boot.outputs.init == 'true'
@@ -116,9 +139,9 @@ jobs:
             export PATH="$bins_dir:$site_packages/ziglang:$PATH"
             echo "PATH=$PATH"
           } | tee -a $GITHUB_ENV | tr ':' '\n' | sed 's/^/ -  /g'
-      - name: "native build: ${{ matrix.native.target }}"
+      - name: "build  native base bin: ${{ matrix.native.target }}"
         shell: bash
-        if: steps.native-cache.outputs.cache-hit != 'true'
+        if: steps.native-base-cache.outputs.cache-hit != 'true'
         run: |
           target="${{ matrix.native.target }}"
           use_zig="${{ matrix.native.zig || 'false' }}"
@@ -128,18 +151,34 @@ jobs:
             --profile=release                         \
             --target="$target"                        \
             --zig="$use_zig"
-
-      - name: "upload native bin: ${{ matrix.native.target }}"
+      - name: "upload native base bin: ${{ matrix.native.target }}"
         uses: actions/upload-artifact@v3
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
+      - name: "build  native pro  bin: ${{ matrix.native.target }}"
+        shell: bash
+        if: steps.native-pro-cache.outputs.cache-hit != 'true'
+        run: |
+          target="${{ matrix.native.target }}"
+          use_zig="${{ matrix.native.zig || 'false' }}"
+          export RUSTFLAGS="-Clink-args=-Wl,--build-id=sha1"
+          ./scripts/build_bin.sh                      \
+            --version=pro                             \
+            --profile=release                         \
+            --target="$target"                        \
+            --zig="$use_zig"
+      - name: "upload native pro  bin: ${{ matrix.native.target }}"
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-pro-${{matrix.native.target}}
+          path: ./target/${{matrix.native.target}}/release/pro_language_server*
       - name: "add rustup cross-compilation target: ${{ matrix.cross.target || 'none' }}"
-        if: steps.boot.outputs.cross == 'true'
+        if: steps.boot.outputs.cross_base == 'true' || steps.boot.outputs.cross_pro == 'true'
         shell: bash
         run: rustup target add ${{ matrix.cross.target }}
-      - name: "cross build: ${{ matrix.cross.target || 'none' }}"
-        if: matrix.cross.target && steps.cross-cache.outputs.cache-hit != 'true'
+      - name: "build  cross base bin: ${{ matrix.cross.target || 'none' }}"
+        if: matrix.cross.target && steps.cross-base-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           target="${{ matrix.cross.target }}"
@@ -150,12 +189,30 @@ jobs:
             --profile=release                         \
             --target="$target"                        \
             --zig="$use_zig"
-      - name: "upload cross bin: ${{ matrix.cross.target }}"
+      - name: "upload cross base bin: ${{ matrix.cross.target }}"
         if: matrix.cross.target
         uses: actions/upload-artifact@v3
         with:
-          name: cconvention-base-${{matrix.cross.target}}
+          name: cconvention-base-${{matrix.cross.target}} # TODO: include version in name?
           path: ./target/${{matrix.cross.target}}/release/base_language_server*
+      - name: "build  cross pro bin: ${{ matrix.cross.target || 'none' }}"
+        if: matrix.cross.target && steps.cross-pro-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          target="${{ matrix.cross.target }}"
+          use_zig="${{ matrix.cross.zig || 'false' }}"
+          export RUSTFLAGS="-Clink-args=-Wl,--build-id=sha1"
+          ./scripts/build_bin.sh                      \
+            --version=pro                            \
+            --profile=release                         \
+            --target="$target"                        \
+            --zig="$use_zig"
+      - name: "upload cross pro bin: ${{ matrix.cross.target }}"
+        if: matrix.cross.target
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-pro-${{matrix.cross.target}}
+          path: ./target/${{matrix.cross.target}}/release/pro_language_server*
   build-js:
     name: Bundle VSCode extension JS
     runs-on: ubuntu-latest
@@ -169,34 +226,43 @@ jobs:
         with:
           path: ./editors/code/base/dist/main.min.common.js
           key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
+      - name: cache the built textmate grammar
+        uses: actions/cache@v3
+        id: textmate
+        with:
+          path: ./editors/code/base/dist/tmLanguage.json
+          key: "textmate-${{ hashfiles('./editors/code/base/src/tmLanguage.yaml') }}"
       - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
-        if: steps.built-base-js.outputs.cache-hit != 'true'
+        if: steps.built-base-js.outputs.cache-hit != 'true' || steps.textmate.outputs.cache-hit != 'true'
         with:
           version: 8
       - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
-        if: steps.built-base-js.outputs.cache-hit != 'true'
+        if: steps.built-base-js.outputs.cache-hit != 'true' || steps.textmate.outputs.cache-hit != 'true'
         with:
-          node-version: 18
+          node-version: 20
           cache: "pnpm"
           cache-dependency-path: |
             ./editors/code/base/pnpm-lock.yaml
             ./editors/code/pro/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
         working-directory: editors/code/base
-        if: steps.built-base-js.outputs.cache-hit != 'true'
+        if: steps.built-base-js.outputs.cache-hit != 'true' || steps.textmate.outputs.cache-hit != 'true'
       - name: modify $PATH
         shell: bash
         working-directory: ./editors/code/base
         run: |
           export PATH=${PWD}/node_modules/.bin:$PATH
           echo PATH=$PATH | tee -a $GITHUB_ENV
-      - name: check the tmLanguage up-to-date
-        if: steps.built-base-js.outputs.cache-hit != 'true'
+      - name: build the textmate grammar if changed
+        if: steps.textmate.outputs.cache-hit != 'true'
         shell: bash
         working-directory: ./editors/code/base
-        run: |
-          ./scripts/build_textmate.sh
-          git --no-pager diff --exit-code -- src/tmLanguage.json
+        run: ./scripts/build_textmate.sh
+      - name: upload the textmate grammar
+        uses: actions/upload-artifact@v3
+        with:
+          name: tmLanguage
+          path: ./editors/code/base/dist/tmLanguage.json
       - name: build the JS if changed
         shell: bash
         if: steps.built-base-js.outputs.cache-hit != 'true'
@@ -208,7 +274,7 @@ jobs:
           name: main-js
           path: ./editors/code/base/dist/main.min.common.js
   build-vsix:
-    name: Build VSCode extensions
+    name: Build and publish vsix
     needs: [build-bin, build-js]
     runs-on: ubuntu-latest
     strategy:
@@ -237,57 +303,93 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0 # shallow clone for speed
-      - name: "download native binary: ${{ matrix.native.target }}"
+      - name: "download native base binary: ${{ matrix.native.target }}"
         uses: actions/download-artifact@v3
         # https://github.com/actions/download-artifact
         with:
           name: cconvention-base-${{ matrix.native.target }}
           path: ./target/${{ matrix.native.target }}/release/
-      - name: "download bundled JS"
-        uses: actions/download-artifact@v3
-        with:
-          name: main-js
-          path: ./editors/code/base/dist/
-      - name: "download cross binary: ${{ matrix.cross.target || '<skip>' }}"
+      - name: "download cross base binary: ${{ matrix.cross.target || '<skip>' }}"
         uses: actions/download-artifact@v3
         if: matrix.cross.target
         with:
           name: cconvention-base-${{ matrix.cross.target }}
           path: ./target/${{ matrix.cross.target }}/release/
+
+      - name: "download native pro binary: ${{ matrix.native.target }}"
+        uses: actions/download-artifact@v3
+        # https://github.com/actions/download-artifact
+        with:
+          name: cconvention-pro-${{ matrix.native.target }}
+          path: ./target/${{ matrix.native.target }}/release/
+      - name: "download cross pro binary: ${{ matrix.cross.target || '<skip>' }}"
+        uses: actions/download-artifact@v3
+        if: matrix.cross.target
+        with:
+          name: cconvention-pro-${{ matrix.cross.target }}
+          path: ./target/${{ matrix.cross.target }}/release/
+
+      - name: "download bundled JS"
+        uses: actions/download-artifact@v3
+        with:
+          name: main-js
+          path: ./editors/code/base/dist/
+      - name: "download textmate grammar"
+        uses: actions/download-artifact@v3
+        with:
+          name: tmLanguage
+          path: ./editors/code/base/dist/
+      - name: "ensure dist directories exist"
+        shell: bash
+        run: |
+          set -eu
+          cd ./editors/code/
+          mkdir -p ./pro/dist
+          cp ./base/dist/main.min.common.js ./base/dist/tmLanguage.json ./pro/dist/
       - name: derive paths
         id: paths
         run: |
           case "${{ matrix.os }}" in
-            ubuntu-latest)  bin_suffix="";     debug_suffix=".debug" ;;
+            ubuntu-latest)  bin_suffix=""    ; debug_suffix=".debug" ;;
             windows-latest) bin_suffix=".exe"; debug_suffix=".pdb"   ;;
             macos-latest)   bin_suffix=""    ; debug_suffix=".dSYM"  ;;
           esac
-          native_bin="${PWD}/target/${{ matrix.native.target }}/release/base_language_server$bin_suffix"
-          native_debug="${PWD}/target/${{ matrix.native.target }}/release/base_language_server$debug_suffix"
-          cross_bin="${PWD}/target/${{ matrix.cross.target }}/release/base_language_server$bin_suffix"
-          cross_debug="${PWD}/target/${{ matrix.cross.target }}/release/base_language_server$debug_suffix"
+          native_base_bin="${PWD}/target/${{ matrix.native.target }}/release/base_language_server$bin_suffix"
+          native_base_debug="${PWD}/target/${{ matrix.native.target }}/release/base_language_server$debug_suffix"
+          cross_base_bin="${PWD}/target/${{ matrix.cross.target }}/release/base_language_server$bin_suffix"
+          cross_base_debug="${PWD}/target/${{ matrix.cross.target }}/release/base_language_server$debug_suffix"
+
+          native_pro_bin="${PWD}/target/${{ matrix.native.target }}/release/pro_language_server$bin_suffix"
+          native_pro_debug="${PWD}/target/${{ matrix.native.target }}/release/pro_language_server$debug_suffix"
+          cross_pro_bin="${PWD}/target/${{ matrix.cross.target }}/release/pro_language_server$bin_suffix"
+          cross_pro_debug="${PWD}/target/${{ matrix.cross.target }}/release/pro_language_server$debug_suffix"
 
           {
-            echo "native_bin=$native_bin"
-            echo "native_debug=$native_debug"
-            echo "cross_bin=$cross_bin"
-            echo "cross_debug=$cross_debug"
+            echo "native_base_bin=$native_base_bin"
+            echo "native_base_debug=$native_base_debug"
+            echo "cross_base_bin=$cross_base_bin"
+            echo "cross_base_debug=$cross_base_debug"
+
+            echo "native_pro_bin=$native_pro_bin"
+            echo "native_pro_debug=$native_pro_debug"
+            echo "cross_pro_bin=$cross_pro_bin"
+            echo "cross_pro_debug=$cross_pro_debug"
           } | tee -a $GITHUB_OUTPUT
 
-          stat $native_bin || {
+          stat $native_base_bin || {
             echo "$native_bin not found"
             ls -al ./target/${{ matrix.native.target }}/release/
             find ./target/${{ matrix.native.target }}/release/ -name 'base_language_server*'
           }
-          stat $native_debug || echo "$native_debug not found"
-          stat $cross_bin || echo "$cross_bin not found"
-          stat $cross_debug || echo "$cross_debug not found"
+          stat $native_base_debug || echo "$native_debug not found"
+          stat $cross_base_bin || echo "$cross_bin not found"
+          stat $cross_base_debug || echo "$cross_debug not found"
       - uses: pnpm/action-setup@v2 # see https://github.com/pnpm/action-setup
         with:
           version: 8
       - uses: actions/setup-node@v3 # see https://github.com/actions/setup-node/
         with:
-          node-version: 18
+          node-version: 20
           cache: "pnpm"
           cache-dependency-path: |
             ./editors/code/base/pnpm-lock.yaml
@@ -300,12 +402,79 @@ jobs:
         run: |
           export PATH=${PWD}/node_modules/.bin:$PATH
           echo PATH=$PATH | tee -a $GITHUB_ENV
-      - name: "check native debuginfo: ${{ matrix.native.target }}"
+
+      - name: build the base ${{ matrix.native.vscode-target }} vsix
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=base        \
+            --profile=release     \
+            --target=${{ matrix.native.target }}
+      - name: upload the base ${{ matrix.native.vscode-target }} vsix
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.native.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+      - name: upload the base ${{ matrix.native.vscode-target }} vsix
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.native.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+      - name: publish the base ${{ matrix.native.vscode-target }} vsix
+        if: github.ref_name != "" && startsWith(github.ref_name, "v")
+        shell: bash
+        run: |
+          set -eu
+          cd ./editors/code/base
+          VSCE_PAT=${{ secrets.BASE_VSCE_PAT }} vsce publish \
+            --no-dependencies                                \
+            --no-git-tag-version                             \
+            --packagePath                                    \
+            ./dist/cconvention-${{matrix.native.vscode-target}}.vsix
+
+      - name: build the pro ${{ matrix.native.vscode-target }} vsix
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=pro         \
+            --profile=release     \
+            --target=${{ matrix.native.target }}
+      - name: upload the pro ${{ matrix.native.vscode-target }} vsix
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.native.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+
+      - name: build the base ${{ matrix.cross.vscode-target }} vsix
+        if: matrix.cross.target
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=base        \
+            --profile=release     \
+            --target=${{ matrix.cross.target }}
+      - name: upload the pro ${{ matrix.cross.vscode-target }} vsix
+        if: matrix.cross.target
+        uses: actions/upload-artifact@v3
+        with:
+          name: cconvention-${{matrix.cross.vscode-target}}.vsix
+          path: ./editors/code/pro/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+
+      - name: "check cross base debuginfo: ${{ matrix.cross.target || '<skip>'}}"
+        if: matrix.cross.target
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
+          else suffix=""
+          fi
+
+          bin="./target/${{ matrix.native.target }}/release/base_language_server$suffix"
+          sentry-cli debug-files check $bin
+      - name: "check native base debuginfo: ${{ matrix.native.target }}"
         run: |
           command -v sentry-cli || echo "missing sentry-cli"
 
-          bin=${{ steps.paths.outputs.native_bin }}
-          debug=${{ steps.paths.outputs.native_debug }}
+          bin=${{ steps.paths.outputs.native_base_bin }}
+          debug=${{ steps.paths.outputs.native_base_debug }}
           echo bin=$bin
           stat $bin || echo "$bin not found"
           sentry-cli debug-files check $bin
@@ -314,41 +483,3 @@ jobs:
           else
             echo "$debug not found"
           fi
-
-      - name: build the ${{ matrix.native.vscode-target }} vsix
-        shell: bash
-        run: |
-          ./scripts/build_vsix.sh \
-            --version=base        \
-            --profile=release     \
-            --target=${{ matrix.native.target }}
-      - name: upload ${{ matrix.native.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
-
-      - name: "check cross debuginfo: ${{ matrix.cross.target || '<skip>'}}"
-        if: matrix.cross.target
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then suffix=".exe";
-          else suffix=""
-          fi
-
-          bin=./target/${{ matrix.native.target }}/release/base_language_server$suffix
-          sentry-cli debug-files check $bin
-      - name: build the ${{ matrix.cross.vscode-target }} vsix
-        if: matrix.cross.target
-        shell: bash
-        run: |
-          ./scripts/build_vsix.sh \
-            --version=base        \
-            --profile=release     \
-            --target=${{ matrix.cross.target }}
-      - name: upload ${{ matrix.cross.vscode-target }} vsix
-        if: matrix.cross.target
-        uses: actions/upload-artifact@v3
-        with:
-          name: cconvention-${{matrix.cross.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
-

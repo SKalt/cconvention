@@ -6,6 +6,8 @@
     "cconvention",
     "EDITMSG",
     "lookaround",
+    "msvc",
+    "rustup",
     "worktree"
   ],
   // "lldb.rpcServer": { "host": "127.0.0.1", "port": 12345 }

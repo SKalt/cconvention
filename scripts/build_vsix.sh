@@ -61,8 +61,6 @@ build_vsix() {
   original_bin_path="$(derive_rust_bin_path "$repo_root" "$rust_target" "$profile" "$version")"
   cd "$working_dir"
   mkdir -p "$dist_dir"
-  # log_dbug "copying
-  # shellcheck disable=SC2012
   log_dbug "copying orignial bin $original_bin_path -> $dist_dir/cconvention"
   cp "$original_bin_path" "$dist_dir/cconvention"
   rm -f "$vsix_path" # just in case

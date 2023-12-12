@@ -5,6 +5,8 @@ Provides completion, linting, and formatting of [conventional commits][ccs].
 `git commit` on the command-line opens a [`${GIT_DIR}/COMMIT_EDITMSG`](https://git-scm.com/docs/git-commit#_files) file in your `$EDITOR` of choice.
 `cconvention` acts as a language server to provide completion, linting, and formatting.
 
+<!-- TODO: embed video -->
+
 Powered by the [`cconvention`][repo]'s base language server.
 Pairs well with [`git-cc`][git-cc], a <abbr title="Terminal User Interface">TUI</abbr> for writing conventional commits.
 
@@ -43,7 +45,7 @@ You can do this several ways:
    ```
    in your current shell or adding the command to a file that consistently gets run during your shell's lifecycle, such as [`.envrc`][direnv] or `~/.profile`.
 
-Now, when you run `git commit`, `code` will open `{GIT_DIR}/COMMIT_EDITMSG` and start the language server.
+Now, when you run `git commit`, `code` will open `${GIT_DIR}/COMMIT_EDITMSG` and start the language server.
 
 <!-- TODO: note about telemetry &/ alert + consent -->
 <!-- TODO: notes about configuration in pro version -->
