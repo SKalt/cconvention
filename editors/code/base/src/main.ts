@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 import type { ExtensionContext } from "vscode";
 import { Uri, window } from "vscode";
 import {

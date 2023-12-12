@@ -40,7 +40,7 @@
       {
         "language": "git-commit",
         "scopeName": "source.git-commit",
-        "path": "./src/tmLanguage.json"
+        "path": "./dist/tmLanguage.json"
       }
     ]
   },

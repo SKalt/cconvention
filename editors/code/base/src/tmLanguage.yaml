@@ -1,53 +1,55 @@
+# © Steven Kalt
+# SPDX-License-Identifier: APACHE-2.0
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Septh/tmlanguage/master/tmlanguage.json
 scopeName: source.git-commit
 patterns:
-# available scopes that are probably themed in vscode:
-# - comment
-# - constant.character, constant.other
-# - constant.language
-# - constant.numeric
-# - constant.numeric.line-number.find-in-files - match
-# - entity.name.filename.find-in-files
-# - entity.name.function
-# - entity.name.tag
-# - entity.name.type, entity.name.class
-# - entity.other.attribute-name
-# - entity.other.inherited-class
-# - invalid
-# - invalid.deprecated
-# - keyword
-# - markup.bold
-# - markup.italic
-# - markup.changed
-# - markup.deleted
-# - markup.heading
-# - markup.heading.setext
-# - markup.inline.raw
-# - markup.inserted
-# - markup.list
-# - markup.quote
-# - meta.diff
-# - meta.diff.header
-# - meta.embedded,source.groovy.embedded
-# - meta.structure.dictionary.json string.quoted.double.json
-# - meta.template.expression
-# - punctuation.definition.template-expression
-# - punctuation.section.embedded
-# - storage
-# - storage.type
-# - string
-# - support.constant
-# - support.function
-# - support.other.variable
-# - support.type
-# - support.class
-# - token.debug-token
-# - token.error-token
-# - token.info-token
-# - token.warn-token
-# - variable
-# - variable.language
-# - variable.parameter
+  # available scopes that are probably themed in vscode:
+  # - comment
+  # - constant.character, constant.other
+  # - constant.language
+  # - constant.numeric
+  # - constant.numeric.line-number.find-in-files - match
+  # - entity.name.filename.find-in-files
+  # - entity.name.function
+  # - entity.name.tag
+  # - entity.name.type, entity.name.class
+  # - entity.other.attribute-name
+  # - entity.other.inherited-class
+  # - invalid
+  # - invalid.deprecated
+  # - keyword
+  # - markup.bold
+  # - markup.italic
+  # - markup.changed
+  # - markup.deleted
+  # - markup.heading
+  # - markup.heading.setext
+  # - markup.inline.raw
+  # - markup.inserted
+  # - markup.list
+  # - markup.quote
+  # - meta.diff
+  # - meta.diff.header
+  # - meta.embedded,source.groovy.embedded
+  # - meta.structure.dictionary.json string.quoted.double.json
+  # - meta.template.expression
+  # - punctuation.definition.template-expression
+  # - punctuation.section.embedded
+  # - storage
+  # - storage.type
+  # - string
+  # - support.constant
+  # - support.function
+  # - support.other.variable
+  # - support.type
+  # - support.class
+  # - token.debug-token
+  # - token.error-token
+  # - token.info-token
+  # - token.warn-token
+  # - variable
+  # - variable.language
+  # - variable.parameter
 
   - name: markup.heading
     begin: "\\A" # beginning of the string -- see _
@@ -80,5 +82,3 @@ patterns:
 
   - name: breaking-change
     match: "BREAKING CHANGE"
-
-

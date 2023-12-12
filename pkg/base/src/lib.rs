@@ -1,3 +1,6 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
+
 #[macro_use]
 extern crate lazy_static;
 

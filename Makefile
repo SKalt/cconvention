@@ -41,10 +41,12 @@ bin: ./bin/cconvention
 	ln -s ../target/${PROFILE}/${VERSION}_language_server ${VERSION}_language_server && \
 	ln -s ../target/${PROFILE}/${VERSION}_language_server cconvention
 
-tmLanguage: ./editors/code/base/src/tmLanguage.json
-./editors/code/base/src/tmLanguage.json: ./editors/code/base/src/tmLanguage.yaml
+tmLanguage: ./editors/code/base/dist/tmLanguage.json
+./editors/code/base/dist/tmLanguage.json: ./editors/code/base/src/tmLanguage.yaml
 	cd ./editors/code/base && PATH=$(shell pwd)/node_modules/.bin:${PATH} ./scripts/build_textmate.sh
-# retained as a symlink in the pro version
+
+./editors/code/pro/dist/tmLanguage.json: ./editors/code/base/dist/tmLanguage.json
+	cp ./editors/code/base/dist/tmLanguage.json ./editors/code/pro/dist/tmLanguage.json
 
 icon: ./editors/code/base/icon.png
 ./editors/code/base/icon.png: \
@@ -76,7 +78,7 @@ vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
 	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/dist/main.min.common.js \
 	./editors/code/${VERSION}/icon.png \
-	./editors/code/${VERSION}/src/tmLanguage.json \
+	./editors/code/${VERSION}/dist/tmLanguage.json \
 	./editors/code/${VERSION}/package.json \
 	./scripts/build_vsix.sh
 

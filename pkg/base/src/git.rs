@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use std::path::{Path, PathBuf};
 
 fn stringify(stdout: Vec<u8>) -> Result<String, Box<dyn std::error::Error + Sync + Send>> {

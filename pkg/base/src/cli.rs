@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;

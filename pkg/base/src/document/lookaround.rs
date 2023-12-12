@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use crop::Rope;
 
 /// given a line/column position in the text, return the the byte offset of the position

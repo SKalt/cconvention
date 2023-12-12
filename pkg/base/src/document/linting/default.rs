@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use std::collections::HashMap;
 
 use crop::RopeSlice;

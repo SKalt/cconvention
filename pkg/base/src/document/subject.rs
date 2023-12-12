@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use std::{collections::HashSet, fmt::Write};
 
 use super::linting::{self, utils};

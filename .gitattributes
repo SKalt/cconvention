@@ -1,1 +1,3 @@
 flake.lock linguist-generated=true
+editors/code/base/src/tmLanguage.json linguist-generated=true
+editors/code/base/icon.png linguist-generated=true

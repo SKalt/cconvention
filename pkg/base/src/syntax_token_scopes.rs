@@ -1,5 +1,7 @@
 /// Language Server Protocol doesn't provide syntax highlighting, but it does
 /// provide a "Semantic Tokens" API that can be used to provide syntax highlighting.
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use std::{collections::HashMap, error::Error};
 
 use super::LANGUAGE;

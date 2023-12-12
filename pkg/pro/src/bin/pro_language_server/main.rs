@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: Polyform-Noncommercial-1.0.0 OR LicenseRef-PolyForm-Free-Trial-1.0.0
 #[macro_use]
 extern crate lazy_static;
 

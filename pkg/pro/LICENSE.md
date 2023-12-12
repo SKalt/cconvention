@@ -1,1 +1,0 @@
-../../licenses/LICENSE.indiecc-4.md

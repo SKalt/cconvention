@@ -1,3 +1,6 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
+
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(feature = "tracing")]

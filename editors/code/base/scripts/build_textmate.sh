@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
-js-yaml ./src/tmLanguage.yaml >./src/tmLanguage.json
+set -eu
+mkdir -p ./dist
+js-yaml ./src/tmLanguage.yaml >./dist/tmLanguage.json

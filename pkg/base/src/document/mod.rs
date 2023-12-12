@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 pub mod linting;
 mod lookaround;
 pub(crate) mod subject;

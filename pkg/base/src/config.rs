@@ -1,3 +1,5 @@
+// © Steven Kalt
+// SPDX-License-Identifier: APACHE-2.0
 use regex::Regex;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 /// use this for reading configuration from the environment

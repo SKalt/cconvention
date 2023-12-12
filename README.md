@@ -2,10 +2,6 @@
 
 A language server to help write [conventional commits][ccs].
 
-<p align=center>
-  <img alt="Stylized CC icon, standing for Conventional Commits or CConvention" src="./editors/code/base/icon.svg">
-</p>
-
 `git commit` on the command-line opens a [`${GIT_DIR}/COMMIT_EDITMSG`](https://git-scm.com/docs/git-commit#_files) file in your `$EDITOR` of choice.
 `cconvention` acts as a language server to provide completion, linting, and formatting.
 
@@ -15,11 +11,6 @@ Pairs well with [`git-cc`][git-cc], a <abbr title="Terminal User Interface">TUI<
 
 Any part of the public-API may change with little or no warning until the first major-version release.
 This includes the names of any published tools, libraries, binaries, or extensions.
-
-<!--
-  roadmap:
-    TODO: make own tree-sitter grammar?
--->
 
 ## Command-line Usage
 
@@ -62,32 +53,34 @@ cconvention --help | sed 's/^/# /g'
 
 ## Licensing
 
-This tool comes in two variants -- an open-source edition which you can build upon and use for any purpose, and a source-provided version that is governed by a source-provided license.
+`cconvention` comes in flavors -- an open-source (OSS) edition which you can build upon and use for any purpose, and a source-provided version with commercial use restrictions.
 Summarized, the source-provided license states:
 
-> To use [this software] to make money or for work, you need to buy a license.
-> If you’re part of a team, everyone on your team who uses the software needs to buy one.
-> You can [try before you buy](./licenses/LICENSE.indiecc-4.md#free-trials), to make sure the software works and integrates well with your prototypes.
+> To use `cconvention` to make money or for work, you need to buy a license.
+> You can try before you buy for a month to make sure the software works for you.
 
-|             Feature              |        OSS        |       Source-provided       |
-| :------------------------------: | :---------------: | :-------------------------: |
-|             License              | [Apache-2.0][oss] | [indiecc-4.0][src-provided] |
-|  error & performance monitoring  |    opt-**out**    |         opt-**in**          |
-|        configuration file        |       ❌ no       |           ✅ yes            |
-| ability to write your own checks |       ❌ no       |           ✅ yes            |
+|             Feature              |        OSS        |                      Source-provided                      |
+| :------------------------------: | :---------------: | :-------------------------------------------------------: |
+|             License              | [Apache-2.0][oss] | [noncommercial OR free-trial OR COMMERCIAL][src-provided] |
+|  error & performance monitoring  |    opt-**out**    |                        opt-**in**                         |
+|        configuration file        |       ❌ no       |                          ✅ yes                           |
+| ability to write your own checks |       ❌ no       |                          ✅ yes                           |
 
-- OSS:
-  - `pkg/base/`
-  - `editors/*/base`
-- Source-provided:
-  - `pkg/pro/`
-  - `editors/*/pro`
+The OSS editions are located in:
 
-If you're ever confused which license applies, check the closest LICENSE.md up the directory tree.
+- `pkg/base/`
+- `editors/*/base`
+
+The source-provided editions are located in:
+
+- `pkg/pro/`
+- `editors/*/pro`
+
+If you're ever confused which license applies, check the nearest file header.
 
 <!-- links -->
 
 [ccs]: https://conventionalcommits.org
 [git-cc]: https://github.com/skalt/git-cc
-[oss]: ./pkg/base/LICENSE.md
-[src-provided]: ./licenses/LICENSE.indiecc-4.md
+[oss]: ./LICENSES/APACHE-2.0.md
+[src-provided]: ./editors/code/pro/LICENSE.md
