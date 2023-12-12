@@ -49,8 +49,6 @@ jobs:
         with:
           path: |
             ./target/${{ matrix.native.target }}/release/base_language_server*
-            ./target/${{ matrix.native.target }}/release/base_language_server.exe
-            ./target/${{ matrix.native.target }}/release/base_language_server.pdb
           # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', 'pkg/base/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
       - name: "cache cross  base binary build: ${{ matrix.cross.target }}"
@@ -58,16 +56,15 @@ jobs:
         if: matrix.cross.target
         id: cross-base-cache
         with:
-          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+          path: |
+            ./target/${{ matrix.cross.target }}/release/base_language_server*
           key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', 'pkg/pro/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "cache native pro  binary build: ${{ matrix.native.target }}"
         uses: actions/cache@v3
         id: native-pro-cache
         with:
           path: |
-            ./target/${{ matrix.native.target }}/release/base_language_server*
-            ./target/${{ matrix.native.target }}/release/base_language_server.exe
-            ./target/${{ matrix.native.target }}/release/base_language_server.pdb
+            ./target/${{ matrix.native.target }}/release/pro_language_server*
           # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
       - name: "cache cross  pro  binary build: ${{ matrix.cross.target }}"
@@ -75,7 +72,8 @@ jobs:
         if: matrix.cross.target
         id: cross-pro-cache
         with:
-          path: ./target/${{ matrix.cross.target }}/release/base_language_server*
+          path: |
+            ./target/${{ matrix.cross.target }}/release/pro_language_server*
           key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
 
       - id: boot
@@ -421,7 +419,7 @@ jobs:
           name: cconvention-${{matrix.native.vscode-target}}.vsix
           path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
       - name: publish the base ${{ matrix.native.vscode-target }} vsix
-        if: github.ref_name != "" && startsWith(github.ref_name, "v")
+        if: startsWith(github.ref_name, 'v')
         shell: bash
         run: |
           set -eu
