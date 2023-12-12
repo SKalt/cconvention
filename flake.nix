@@ -1,18 +1,23 @@
 {
   description = "A language server to help write conventional commits.";
   inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
     flake-utils.url = "github:numtide/flake-utils"; # TODO: pin
-    rust-overlay.url = "github:oxalica/rust-overlay"; # TODO: pin
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay"; # TODO: pin
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
   };
 
-  outputs = { self, flake-utils, nixpkgs, rust-overlay, ... }:
+  outputs = { flake-utils, nixpkgs, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [(import rust-overlay)];
         pkgs = (import nixpkgs) {
           inherit system overlays;
         };
+        rust_toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         cargoDeps = pkgs.rustPlatform.importCargoLock {
           lockFile = ./Cargo.lock;
         };
@@ -40,12 +45,7 @@
               #   ln -s ${./Cargo.lock} Cargo.lock
               # '';
 
-              nativeBuildInputs = with pkgs;
-                [
-                  cargo
-                  clippy
-                  rustc
-                ];
+              nativeBuildInputs = [rust_toolchain];
             };
 
         };
@@ -55,18 +55,12 @@
           # see https://hoverbear.org/blog/rust-bindgen-in-nix/
           # see https://slightknack.dev/blog/nix-os-bindgen/
           # https://nixos.wiki/wiki/Rust#Installation_via_rustup
-          nativeBuildInputs = with pkgs; [
-            cargo
-            clippy
-            rustup
-            # rustc: omitted
-          ];
+          nativeBuildInputs = [rust_toolchain];
           buildInputs = with pkgs;
             [
               # rust tools
               cargo-bloat
-              rust-analyzer
-              rustfmt
+              rust-analyzer-unwrapped
               cargo-cross
               zig # temp
               cargo-zigbuild
@@ -98,13 +92,9 @@
               shellcheck
             ];
         };
-        # From https://github.com/srid/rust-nix-template/blob/50741677232653ec0fb465471ce1ab83e37efb3a/flake.nix#L37
 
-        shellHook = ''
-          # For rust-analyzer 'hover' tooltips to work.
-          export RUST_SRC_PATH=${pkgs.rustPlatform.rustLibSrc}
-        '';
-
+        # Environment variables
+        RUST_SRC_PATH = "${rust_toolchain}/lib/rustlib/src/rust/library";
       }
     );
 }
