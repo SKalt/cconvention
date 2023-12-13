@@ -301,7 +301,7 @@ jobs:
           - os: macos-latest
             native:
               target: x86_64-apple-darwin
-              vscode-target: darwin-x64x
+              vscode-target: darwin-x64
             cross:
               target: aarch64-apple-darwin
               vscode-target: darwin-arm64
