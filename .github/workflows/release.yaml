@@ -30,7 +30,7 @@ jobs:
           - os: macos-latest
             native:
               target: x86_64-apple-darwin
-              vscode-target: darwin-x64x
+              vscode-target: darwin-x64
               zig: true
             cross:
               target: aarch64-apple-darwin
@@ -40,7 +40,7 @@ jobs:
     name: Build (${{ matrix.native.target }})
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # shallow clone for speed
       - name: "cache native base binary build: ${{ matrix.native.target }}"
@@ -101,7 +101,7 @@ jobs:
             echo "cross_base=$cross_base"
             echo "native_pro=$native_pro"
             echo "cross_pro=$cross_pro"
-          } | tee -a $GITHUB_OUTPUT
+          } | tee -a "$GITHUB_OUTPUT"
       - name: set MacOS SDKROOT and MACOSX_DEPLOYMENT_TARGET
         # see https://stackoverflow.com/questions/66849112/how-do-i-cross-compile-a-rust-application-from-macos-x86-to-macos-silicon
         if: matrix.os == 'macos-latest' && steps.boot.outputs.init == 'true'
@@ -158,7 +158,7 @@ jobs:
             --target="$target"                        \
             --zig="$use_zig"
       - name: "upload native base bin: ${{ matrix.native.target }}"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
@@ -175,7 +175,7 @@ jobs:
             --target="$target"                        \
             --zig="$use_zig"
       - name: "upload native pro  bin: ${{ matrix.native.target }}"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-pro-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/pro_language_server*
@@ -197,7 +197,7 @@ jobs:
             --zig="$use_zig"
       - name: "upload cross base bin: ${{ matrix.cross.target }}"
         if: matrix.cross.target
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-base-${{matrix.cross.target}} # TODO: include version in name?
           path: ./target/${{matrix.cross.target}}/release/base_language_server*
@@ -215,7 +215,7 @@ jobs:
             --zig="$use_zig"
       - name: "upload cross pro bin: ${{ matrix.cross.target }}"
         if: matrix.cross.target
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-pro-${{matrix.cross.target}}
           path: ./target/${{matrix.cross.target}}/release/pro_language_server*
@@ -223,7 +223,7 @@ jobs:
     name: Bundle VSCode extension JS
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # shallow clone for speed
       - name: cache the built JS
@@ -265,7 +265,7 @@ jobs:
         working-directory: ./editors/code/base
         run: ./scripts/build_textmate.sh
       - name: upload the textmate grammar
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tmLanguage
           path: ./editors/code/base/dist/tmLanguage.json
@@ -275,7 +275,7 @@ jobs:
         working-directory: ./editors/code/base
         run: ./scripts/build_js.sh
       - name: upload bundled JS
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: main-js
           path: ./editors/code/base/dist/main.min.common.js
@@ -306,42 +306,42 @@ jobs:
               target: aarch64-apple-darwin
               vscode-target: darwin-arm64
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # shallow clone for speed
       - name: "download native base binary: ${{ matrix.native.target }}"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         # https://github.com/actions/download-artifact
         with:
           name: cconvention-base-${{ matrix.native.target }}
           path: ./target/${{ matrix.native.target }}/release/
       - name: "download cross base binary: ${{ matrix.cross.target || '<skip>' }}"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         if: matrix.cross.target
         with:
           name: cconvention-base-${{ matrix.cross.target }}
           path: ./target/${{ matrix.cross.target }}/release/
 
       - name: "download native pro binary: ${{ matrix.native.target }}"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         # https://github.com/actions/download-artifact
         with:
           name: cconvention-pro-${{ matrix.native.target }}
           path: ./target/${{ matrix.native.target }}/release/
       - name: "download cross pro binary: ${{ matrix.cross.target || '<skip>' }}"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         if: matrix.cross.target
         with:
           name: cconvention-pro-${{ matrix.cross.target }}
           path: ./target/${{ matrix.cross.target }}/release/
 
       - name: "download bundled JS"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: main-js
           path: ./editors/code/base/dist/
       - name: "download textmate grammar"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tmLanguage
           path: ./editors/code/base/dist/
@@ -417,12 +417,12 @@ jobs:
             --profile=release     \
             --target=${{ matrix.native.target }}
       - name: upload the base ${{ matrix.native.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-${{matrix.native.vscode-target}}.vsix
           path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
       - name: upload the base ${{ matrix.native.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-${{matrix.native.vscode-target}}.vsix
           path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
@@ -447,7 +447,7 @@ jobs:
             --profile=release     \
             --target=${{ matrix.native.target }}
       - name: upload the pro ${{ matrix.native.vscode-target }} vsix
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-${{matrix.native.vscode-target}}.vsix
           path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
@@ -462,11 +462,11 @@ jobs:
             --target=${{ matrix.cross.target }}
       - name: upload the pro ${{ matrix.cross.vscode-target }} vsix
         if: matrix.cross.target
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cconvention-${{matrix.cross.vscode-target}}.vsix
           path: ./editors/code/pro/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
-
+      # TODO: build pro vsix?
       - name: "check cross base debuginfo: ${{ matrix.cross.target || '<skip>'}}"
         if: matrix.cross.target
         run: |
@@ -490,3 +490,56 @@ jobs:
           else
             echo "$debug not found"
           fi
+
+  release:
+    name: Create GitHub release
+    steps:
+      - name: Get the release version from the tag
+        id: "release_id"
+        if: env.VERSION == ''
+        shell: bash
+        run: |
+          semver_regex='^v[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*$'
+          VERSION="$(echo "${{ github.ref_name }}" | grep -E "$semver_regex" || true)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ -n "${VERSION:-}" ]; then
+            echo "ok=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.release_id.ok == "true"
+        with:
+          fetch-depth: 1 # shallow clone for speed
+      - name: Check that tag version and Cargo.toml version are the same
+        shell: bash
+        if: steps.release_id.ok == "true"
+        run: |
+          if ! grep -q "version = \"$VERSION\"" Cargo.toml; then
+            echo "version does not match Cargo.toml" >&2
+            exit 1
+          fi
+      - name: Create GitHub release
+        if: steps.release_id.ok == "true"
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$VERSION" --draft --verify-tag --title "$VERSION"
+      - uses: actions/download-artifact@v4
+        if: steps.release_id.ok == "true"
+        with:
+          pattern: "cconvention-*"
+          path: artifacts
+      - name: "checksums"
+        if: steps.release_id.ok == "true"
+        shell: bash
+        run: |
+          cd artifacts && shasum -a 256 * > checksums.txt
+      - name: "upload artifacts"
+        if: steps.release_id.ok == "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          cd artifacts;
+          find . -type f -exec gh release upload "$VERSION" '{}' ';'
