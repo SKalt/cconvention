@@ -548,23 +548,28 @@ jobs:
         if: steps.release_id.outputs.ok == 'true'
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$VERSION" --draft --verify-tag --title "$VERSION"
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION"
       - uses: actions/download-artifact@v4
         if: steps.release_id.outputs.ok == 'true'
         with:
           pattern: "cconvention-*"
           path: artifacts
+      - name: flatten directory
+        shell: bash
+        run: |
+          mkdir flattened
+          find ./artifacts -type f -exec mv '{}' ./flattened/ ';'
       - name: "checksums"
         if: steps.release_id.outputs.ok == 'true'
         shell: bash
         run: |
-          cd artifacts && shasum -a 256 * > checksums.txt
+          cd flattened && shasum -a 256 * > checksums.txt
       - name: "upload artifacts"
         if: steps.release_id.outputs.ok == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         shell: bash
         run: |
-          cd artifacts;
-          find . -type f -exec gh release upload "$VERSION" '{}' ';'
+          cd flattened &&
+          find . -type f -exec gh release upload "v$VERSION" '{}' ';'
