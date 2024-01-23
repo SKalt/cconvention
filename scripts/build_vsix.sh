@@ -56,13 +56,14 @@ build_vsix() {
   local vsix_path="$dist_dir/cconvention.vsix"
   local vsce_target
   vsce_target="$(rust_to_vsce_target "$rust_target")"
-  local marked_path="$dist_dir/cconvention.${vsce_target}.vsix"
+  local marked_path="$dist_dir/cconvention.${version}.${vsce_target}.vsix"
   local original_bin_path
   original_bin_path="$(derive_rust_bin_path "$repo_root" "$rust_target" "$profile" "$version")"
   cd "$working_dir"
   mkdir -p "$dist_dir"
   log_dbug "copying orignial bin $original_bin_path -> $dist_dir/cconvention"
   cp "$original_bin_path" "$dist_dir/cconvention"
+  chmod +x "$dist_dir/cconvention" # ensure the binary is executable
   rm -f "$vsix_path" # just in case
   # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
   log_info "building $vsix_path"

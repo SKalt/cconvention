@@ -72,9 +72,9 @@ client: client-js tmLanguage ./editors/code/${VERSION}/dist/cconvention
 	mkdir -p ./editors/code/${VERSION}/dist && \
 		cp ./target/${PROFILE}/${VERSION}_language_server ./editors/code/${VERSION}/dist/cconvention
 
-vsix: ./editors/code/${VERSION}/dist/cconvention.vsix
+vsix: ./editors/code/${VERSION}/dist/cconvention.${VERSION}.vsix
 
-./editors/code/${VERSION}/dist/cconvention.vsix: \
+./editors/code/${VERSION}/dist/cconvention.${VERSION}.vsix: \
 	./editors/code/${VERSION}/dist/cconvention \
 	./editors/code/${VERSION}/dist/main.min.common.js \
 	./editors/code/${VERSION}/icon.png \
@@ -92,7 +92,7 @@ clean-bin:
 	rm -f ./bin/cconvention
 
 clean-vsix:
-	rm -f ./editors/code/${VERSION}/dist/cconvention.vsix
+	rm -f ./editors/code/${VERSION}/dist/cconvention.${VERSION}.vsix
 
 test:
 	cargo test --all-features

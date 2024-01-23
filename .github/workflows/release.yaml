@@ -44,7 +44,7 @@ jobs:
         with:
           fetch-depth: 0 # shallow clone for speed
       - name: "cache native base binary build: ${{ matrix.native.target }}"
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: native-base-cache
         with:
           path: |
@@ -54,7 +54,7 @@ jobs:
           # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', 'pkg/base/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
       - name: "cache cross  base binary build: ${{ matrix.cross.target }}"
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         if: matrix.cross.target
         id: cross-base-cache
         with:
@@ -64,7 +64,7 @@ jobs:
             ./target/${{ matrix.cross.target }}/release/base_language_server.pdb
           key: ${{ matrix.cross.target }}--${{ hashFiles('./Cargo.lock', 'pkg/pro/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm') }}
       - name: "cache native pro  binary build: ${{ matrix.native.target }}"
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: native-pro-cache
         with:
           path: |
@@ -74,7 +74,7 @@ jobs:
           # hardcode paths in an attempt to appease windows
           key: ${{ matrix.native.target }}--${{ hashFiles('./Cargo.lock', '**/Cargo.toml', 'pkg/base/**/*.rs', 'pkg/base/**/*.scm', './scripts/build_bin.sh') }}
       - name: "cache cross  pro  binary build: ${{ matrix.cross.target }}"
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         if: matrix.cross.target
         id: cross-pro-cache
         with:
@@ -223,6 +223,10 @@ jobs:
           name: cconvention-pro-${{matrix.cross.target}}
           path: ./target/${{matrix.cross.target}}/release/pro_language_server*
           if-no-files-found: error
+      - name: debug
+        shell: bash
+        run: |
+          git diff
   build-js:
     name: Bundle VSCode extension JS
     runs-on: ubuntu-latest
@@ -231,13 +235,13 @@ jobs:
         with:
           fetch-depth: 0 # shallow clone for speed
       - name: cache the built JS
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: built-base-js
         with:
           path: ./editors/code/base/dist/main.min.common.js
           key: "built-js-for-${{ hashfiles('./editors/code/base/src/*.ts', './editors/code/base/pnpm-lock.yaml') }}"
       - name: cache the built textmate grammar
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: textmate
         with:
           path: ./editors/code/base/dist/tmLanguage.json
@@ -426,8 +430,21 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cconvention-base-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+          path: ./editors/code/base/dist/cconvention.base.${{ matrix.native.vscode-target }}.vsix
           if-no-files-found: error
+
+      - name: publish the base ${{ matrix.native.vscode-target }} vsix
+        if: matrix.cross.target && startsWith(github.ref_name, 'v')
+        shell: bash
+        run: |
+          set -eu
+          cd ./editors/code/base
+          VSCE_PAT=${{ secrets.BASE_VSCE_PAT }} vsce publish \
+            --no-dependencies                                \
+            --no-git-tag-version                             \
+            --skip-duplicate                                 \
+            --packagePath                                    \
+            ./dist/cconvention.base.${{matrix.native.vscode-target}}.vsix
 
       - name: build the base ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
         if: matrix.cross.target
@@ -442,7 +459,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cconvention-base-${{matrix.cross.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+          path: ./editors/code/base/dist/cconvention.base.${{ matrix.cross.vscode-target }}.vsix
           if-no-files-found: error
 
       - name: publish the base ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
@@ -456,7 +473,7 @@ jobs:
             --no-git-tag-version                             \
             --skip-duplicate                                 \
             --packagePath                                    \
-            ./dist/cconvention.${{matrix.cross.vscode-target}}.vsix
+            ./dist/cconvention.base.${{matrix.cross.vscode-target}}.vsix
 
       - name: build the pro ${{ matrix.native.vscode-target }} vsix
         shell: bash
@@ -469,7 +486,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cconvention-pro-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/pro/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+          path: ./editors/code/pro/dist/cconvention.pro.${{ matrix.native.vscode-target }}.vsix
           if-no-files-found: error
 
       - name: build the pro ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
@@ -485,7 +502,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cconvention-pro-${{matrix.cross.vscode-target}}.vsix
-          path: ./editors/code/pro/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+          path: ./editors/code/pro/dist/cconvention.pro.${{ matrix.cross.vscode-target }}.vsix
           if-no-files-found: error
 
       - name: "check cross base debuginfo: ${{ matrix.cross.target || '<skip>'}}"
@@ -558,8 +575,37 @@ jobs:
       - name: flatten directory
         shell: bash
         run: |
+          sudo apt install -y tree
+          tree ./artifacts
           mkdir flattened
-          find ./artifacts -type f -exec mv '{}' ./flattened/ ';'
+
+          # since all arch-specific builds of the cli are named cconvention,
+          # rename them when moving them into the directory to upload
+          variants=(base pro)
+          triples=(
+              x86_64-unknown-linux-gnu
+              aarch64-unknown-linux-gnu
+              x86_64-apple-darwin
+              aarch64-apple-darwin
+          )
+          for variant in "${variants[@]}"; do
+            for triple in "${triples[@]}"; do
+              name="cconvention-${variant}-${triple}"
+              cp \
+                "./artifacts/${name}/${variant}_language_server" \
+                "./flattened/cconvention-${variant}-${triple}"
+            done
+          done
+          for variant in "${variants[@]}"; do
+            triple=x86_64-pc-windows-msvc
+            name="cconvention-${variant}-${triple}"
+            cp \
+              "./artifacts/${name}/${variant}_language_server.exe" \
+              "./flattened/cconvention-${variant}-${triple}.exe"
+          done
+          # all vsix variants have unique names
+          cp ./artifacts/**/*.vsix ./flattened/
+
       - name: "checksums"
         if: steps.release_id.outputs.ok == 'true'
         shell: bash

@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "base"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "clap",
  "crop",
@@ -712,7 +712,7 @@ checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
 name = "pro"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "base",
  "indexmap",
