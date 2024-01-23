@@ -63,6 +63,7 @@ build_vsix() {
   mkdir -p "$dist_dir"
   log_dbug "copying orignial bin $original_bin_path -> $dist_dir/cconvention"
   cp "$original_bin_path" "$dist_dir/cconvention"
+  chmod +x "$dist_dir/cconvention" # ensure the binary is executable
   rm -f "$vsix_path" # just in case
   # see https://github.com/microsoft/vscode-vsce/issues/421 for issues with vsce+pnpm
   log_info "building $vsix_path"
