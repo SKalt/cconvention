@@ -1,6 +1,8 @@
 # © Steven Kalt
 # SPDX-License-Identifier: APACHE-2.0
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Septh/tmlanguage/master/tmlanguage.json
+# See https://macromates.com/manual/en/language_grammars
+# See https://github.com/microsoft/vscode/blob/main/extensions/git-base/syntaxes/git-commit.tmLanguage.json
 scopeName: source.git-commit
 patterns:
   # available scopes that are probably themed in vscode:
@@ -54,6 +56,15 @@ patterns:
   - name: markup.heading
     begin: "\\A" # beginning of the string -- see _
     end: "$"
+
+  - "comment": "diff presented at the end of the commit message when using commit -v."
+    "name": "meta.embedded.diff.git-commit"
+    "contentName": "source.diff"
+    "begin": "(?=^diff\\ \\-\\-git)"
+    "end": "\\z"
+    "patterns": [{ "include": "source.diff" }]
+    # see https://git-scm.com/docs/git-commit#Documentation/git-commit.txt-scissors
+    # see https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---verbose
 
   - name: comment
     begin: "^#"
