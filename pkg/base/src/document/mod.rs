@@ -17,11 +17,11 @@ use linting::INVALID;
 
 lazy_static! {
     static ref SUBJECT_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/subject.scm")).unwrap();
+        tree_sitter::Query::new(&LANGUAGE, include_str!("./queries/subject.scm")).unwrap();
     static ref TRAILER_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/trailer.scm")).unwrap();
+        tree_sitter::Query::new(&LANGUAGE, include_str!("./queries/trailer.scm")).unwrap();
     static ref FILE_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, include_str!("./queries/filepath.scm")).unwrap();
+        tree_sitter::Query::new(&LANGUAGE, include_str!("./queries/filepath.scm")).unwrap();
 }
 
 fn get_subject_line(code: &Rope) -> Option<(RopeSlice, usize)> {
@@ -51,7 +51,7 @@ impl GitCommitDocument {
         let mut parser = {
             let language = tree_sitter_gitcommit::language();
             let mut parser = tree_sitter::Parser::new();
-            parser.set_language(language).unwrap();
+            parser.set_language(&language).unwrap();
             parser.set_timeout_micros(500_000); // .5 seconds
             parser
         };
@@ -202,7 +202,7 @@ impl GitCommitDocument {
         );
         for m in matches {
             for c in m.captures {
-                let name = names[c.index as usize].as_str();
+                let name = names[c.index as usize];
                 match name {
                     "subject" => {
                         return Some(c.node);

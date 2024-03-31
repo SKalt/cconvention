@@ -6,10 +6,11 @@ use std::{collections::HashMap, error::Error};
 
 use super::LANGUAGE;
 use lsp_types::SemanticToken;
+use tracing::info;
 
 lazy_static! {
     static ref HIGHLIGHTS_QUERY: tree_sitter::Query =
-        tree_sitter::Query::new(*LANGUAGE, tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap();
+        tree_sitter::Query::new(&LANGUAGE, tree_sitter_gitcommit::HIGHLIGHTS_QUERY).unwrap();
     pub static ref SYNTAX_TOKEN_LEGEND: Vec<&'static str> = vec![
         "comment",
         "error",
@@ -50,7 +51,7 @@ pub(crate) fn handle_all_tokens(
     let mut start: u32 = 0;
     for m in matches {
         for c in m.captures {
-            let capture_name = names[c.index as usize].as_str();
+            let capture_name = names[c.index as usize];
             // TODO: handle if the client doesn't support overlapping tokens
             match capture_name {
                 "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
@@ -79,9 +80,13 @@ pub(crate) fn handle_all_tokens(
             let token = lsp_types::SemanticToken {
                 delta_line,
                 delta_start,
-                length: (range.end_point.column - range.start_point.column)
-                    .try_into()
-                    .unwrap(),
+                length: {
+                    let end = range.end_point.column;
+                    let start = range.start_point.column;
+                    info!("{end} - {start}");
+                    let x = range.end_point.column - range.start_point.column;
+                    x.try_into().unwrap()
+                },
                 token_type,
                 token_modifiers_bitset: 0,
             };

@@ -50,7 +50,7 @@ lazy_static! {
     };
 
     static ref BAD_TRAILER_QUERY: tree_sitter::Query = tree_sitter::Query::new(
-        *LANGUAGE,
+        &LANGUAGE,
         include_str!("./queries/bad_trailer.scm"),
     ).unwrap();
 }

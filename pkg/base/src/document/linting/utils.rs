@@ -80,7 +80,7 @@ pub fn query_lint(
     let mut lints = vec![];
     let mut cursor = tree_sitter::QueryCursor::new();
     let names = query.capture_names();
-    let mut required_missing: bool = names.iter().any(|name| name == "required");
+    let mut required_missing: bool = names.iter().any(|name| *name == "required");
     if required_missing {
         log_debug!("[{}] starting search for required capture", code);
     }
@@ -93,7 +93,7 @@ pub fn query_lint(
     for m in matches {
         for c in m.captures {
             let name = &names[c.index as usize];
-            if name == "forbidden" {
+            if *name == "forbidden" {
                 let start = c.node.start_position();
                 let end = c.node.end_position();
                 let mut lint = make_diagnostic(
@@ -105,7 +105,7 @@ pub fn query_lint(
                 );
                 lint.code = Some(lsp_types::NumberOrString::String(code.into()));
                 lints.push(lint);
-            } else if name == "required" {
+            } else if *name == "required" {
                 log_debug!(
                     "[{}] found required capture at {:?}",
                     code,
