@@ -33,10 +33,47 @@ lazy_static! {
     };
 }
 
+struct TokenCapabilities(u8);
+impl TokenCapabilities {
+    const MULTILINE: u8 = 0b0000_1111;
+    const OVERLAP: u8 = 0b1111_0000;
+    pub fn new(multiline: bool, overlap: bool) -> Self {
+        Self(if multiline { Self::MULTILINE } else { 0 } | if overlap { Self::OVERLAP } else { 0 })
+    }
+    #[inline]
+    fn supports_multiline(&self) -> bool {
+        (self.0 & Self::MULTILINE) != 0
+    }
+    #[inline]
+    fn supports_overlap(&self) -> bool {
+        (self.0 & Self::OVERLAP) != 0
+    }
+}
 pub(crate) fn handle_all_tokens(
+    _client_capabilities: &lsp_types::ClientCapabilities,
     doc: &crate::document::GitCommitDocument,
     _params: lsp_types::SemanticTokensParams,
 ) -> Result<Vec<SemanticToken>, Box<dyn Error + Send + Sync>> {
+    let _client = {
+        // see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#semanticTokensClientCapabilities
+        let semantic_token_capabilities = _client_capabilities
+            .text_document
+            .as_ref()
+            .and_then(|td| td.semantic_tokens.as_ref());
+        semantic_token_capabilities
+            .map(|st| {
+                TokenCapabilities::new(
+                    st.multiline_token_support.unwrap_or(false),
+                    st.overlapping_token_support.unwrap_or(false),
+                )
+            })
+            .unwrap_or(TokenCapabilities::new(false, false))
+    };
+    info!(
+        "client semantic token support: multiline: {}; overlap: {}",
+        _client.supports_multiline(),
+        _client.supports_overlap()
+    );
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
     let mut cursor = tree_sitter::QueryCursor::new();
     let matches = cursor.matches(
@@ -47,45 +84,50 @@ pub(crate) fn handle_all_tokens(
     // TODO: use subject line tokenization from `doc.subject.unwrap()`
     let names = HIGHLIGHTS_QUERY.capture_names();
     let mut tokens: Vec<lsp_types::SemanticToken> = Vec::new();
-    let mut line: u32 = 0;
-    let mut start: u32 = 0;
+    let mut prev_seen_line: u32 = 0; // the line number of the last seen capture
+    let mut start_col: u32 = 0; // the column number of the start of the token
     for m in matches {
-        for c in m.captures {
-            let capture_name = names[c.index as usize];
+        for capture in m.captures {
+            let capture_name = names[capture.index as usize];
             // TODO: handle if the client doesn't support overlapping tokens
             match capture_name {
                 "text.title" | "comment" | "error" => continue, // these can overlap with other tokens
-                _other => {}
+                _ => {}
             };
-            let range = c.node.range();
+            let range = capture.node.range();
+            if !_client.supports_multiline() && range.start_point.row < range.end_point.row {
+                continue; // since this is a multiline token
+            }
             let start_line = range.start_point.row as u32;
-            let delta_line: u32 = if start_line > line {
-                start = 0;
-                start_line - line
-            } else {
-                0
-            };
+            let delta_line: u32 = start_line - prev_seen_line;
+            if start_line > prev_seen_line {
+                start_col = 0;
+            }
             let delta_start: u32 = {
                 let token_start = range.start_point.column as u32;
                 if token_start == 0 {
                     0
                 } else {
-                    token_start - start
+                    token_start - start_col
                 }
             };
-            line = range.end_point.row as u32;
-            start = range.end_point.column as u32;
+            prev_seen_line = range.end_point.row as u32;
+            start_col = range.end_point.column as u32;
 
             let token_type: u32 = *SYNTAX_TOKEN_SCOPES.get(capture_name).unwrap();
+            // See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
             let token = lsp_types::SemanticToken {
-                delta_line,
-                delta_start,
+                delta_line,  // token line number, relative to the previous token
+                delta_start, // token start character, relative to the previous token
                 length: {
-                    let end = range.end_point.column;
-                    let start = range.start_point.column;
-                    info!("{end} - {start}");
-                    let x = range.end_point.column - range.start_point.column;
-                    x.try_into().unwrap()
+                    if _client.supports_multiline() {
+                        panic!("unable to calculate length of multiline token")
+                    } else {
+                        (range.end_point.column - range.start_point.column)
+                            .try_into()
+                            .unwrap() // <- panicking if the line is over 4 * 10^9
+                                      // characters long is fine
+                    }
                 },
                 token_type,
                 token_modifiers_bitset: 0,

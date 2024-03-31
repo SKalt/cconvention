@@ -6,17 +6,17 @@ use crate::{
     git::to_path,
     syntax_token_scopes,
 };
+use anyhow::anyhow;
 use core::panic;
 use lsp_server::{self, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::Notification as NotificationTrait;
 use lsp_types::{
     self, CompletionParams, DidOpenTextDocumentParams, DocumentLinkParams,
     DocumentOnTypeFormattingParams, GlobPattern, HoverParams, InitializeResult, ServerInfo, Url,
 };
+use lsp_types::{notification::Notification as NotificationTrait, InitializeParams};
 use lsp_types::{DidChangeTextDocumentParams, ServerCapabilities};
 use std::collections::HashMap;
 use std::error::Error;
-
 lazy_static! {
     pub static ref CAPABILITIES: lsp_types::ServerCapabilities = {
         lsp_types::ServerCapabilities {
@@ -117,6 +117,7 @@ pub struct Server<Cfg: ConfigStore> {
     config: Cfg,
     commits: HashMap<lsp_types::Url, GitCommitDocument>,
     connection: lsp_server::Connection,
+    client_capabilities: lsp_types::ClientCapabilities,
 }
 
 pub enum ServerLoopAction {
@@ -163,8 +164,10 @@ impl<Cfg: ConfigStore> Server<Cfg> {
         cap: &ServerCapabilities,
     ) -> Result<&mut Self, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "init");
-        // let capabilities = &params.capabilities;
-        let (id, _) = self.connection.initialize_start()?;
+        // see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initializeParams
+        let (id, init_params) = self.connection.initialize_start()?;
+        let _init_params: InitializeParams = serde_json::from_value(init_params)?;
+        self.client_capabilities = _init_params.capabilities;
         let response = InitializeResult {
             capabilities: cap.clone(),
             server_info: Some(ServerInfo {
@@ -185,6 +188,7 @@ impl<Cfg: ConfigStore> Server<Cfg> {
             config,
             commits: HashMap::with_capacity(1), // expect that most of the time there will be exactly 1 document
             connection: conn,
+            client_capabilities: Default::default(),
         }
     }
     pub fn from_tcp(_config: Cfg, _port: u16) -> Self {
@@ -694,14 +698,15 @@ impl<Cfg: ConfigStore> Server<Cfg> {
     ) -> Result<Response, Box<dyn Error + Send + Sync>> {
         span!(tracing::Level::INFO, "handle_token_full");
         let uri = &params.text_document.uri;
-        let commit = self.commits.get_mut(uri);
-        if commit.is_none() {
-            panic!("no such document {uri}")
-        }
-        let commit = commit.unwrap();
+        let commit = self
+            .commits
+            .get(uri)
+            .ok_or(anyhow!("no such document {uri}"))?;
+        let data =
+            syntax_token_scopes::handle_all_tokens(&self.client_capabilities, commit, params)?;
         let result = lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
             result_id: None,
-            data: syntax_token_scopes::handle_all_tokens(commit, params)?,
+            data,
         });
         let result: Response = Response {
             id: id.clone(),

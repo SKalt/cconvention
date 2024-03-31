@@ -48,6 +48,26 @@
         "scopeName": "source.git-commit",
         "path": "./src/tmLanguage.json"
       }
+    ],
+    "configuration": {
+      "title": "Conventional Commit Language Server",
+      "properties": {
+        "cconvention.binary_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Path to the cconvention binary"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "kalt-dot-cloud.git-conventional-commit-ls-basic.restartServer",
+        "title": "Restart server",
+        "category": "cconvention"
+      }
     ]
   },
   "activationEvents": [

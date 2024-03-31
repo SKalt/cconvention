@@ -275,7 +275,7 @@ impl Config {
                 // requiring the HashMap to be borrowed for 'static.
                 // Instead of dealing with all that, always compile the query.
                 // TODO: display error messages to the user
-                let query = tree_sitter::Query::new(*LANGUAGE, &plugin.query).map_err(|e| {
+                let query = tree_sitter::Query::new(&LANGUAGE, &plugin.query).map_err(|e| {
                     format!(
                         "{:?} error compiling tree-sitter query `{}.query` @ {} line {} column {} : {:?}",
                         e.kind,

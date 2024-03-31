@@ -16,7 +16,7 @@
         "RUST_BACKTRACE": "1"
       },
       // "outFiles": ["${workspaceRoot}/client//dist/*.js"],
-      "preLaunchTask": "Build Base Server and Extension"
+      "preLaunchTask": "Build Base Vsix"
     },
     {
       "name": "Launch Pro Client",
