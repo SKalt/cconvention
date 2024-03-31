@@ -162,6 +162,7 @@ jobs:
         with:
           name: cconvention-base-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/base_language_server*
+          if-no-files-found: error
       - name: "build  native pro  bin: ${{ matrix.native.target }}"
         shell: bash
         if: steps.native-pro-cache.outputs.cache-hit != 'true'
@@ -179,6 +180,7 @@ jobs:
         with:
           name: cconvention-pro-${{matrix.native.target}}
           path: ./target/${{matrix.native.target}}/release/pro_language_server*
+          if-no-files-found: error
       - name: "add rustup cross-compilation target: ${{ matrix.cross.target || 'none' }}"
         if: steps.boot.outputs.cross_base == 'true' || steps.boot.outputs.cross_pro == 'true'
         shell: bash
@@ -201,6 +203,7 @@ jobs:
         with:
           name: cconvention-base-${{matrix.cross.target}} # TODO: include version in name?
           path: ./target/${{matrix.cross.target}}/release/base_language_server*
+          if-no-files-found: error
       - name: "build  cross pro bin: ${{ matrix.cross.target || 'none' }}"
         if: matrix.cross.target && steps.cross-pro-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -219,6 +222,7 @@ jobs:
         with:
           name: cconvention-pro-${{matrix.cross.target}}
           path: ./target/${{matrix.cross.target}}/release/pro_language_server*
+          if-no-files-found: error
   build-js:
     name: Bundle VSCode extension JS
     runs-on: ubuntu-latest
@@ -269,6 +273,7 @@ jobs:
         with:
           name: tmLanguage
           path: ./editors/code/base/dist/tmLanguage.json
+          if-no-files-found: error
       - name: build the JS if changed
         shell: bash
         if: steps.built-base-js.outputs.cache-hit != 'true'
@@ -279,6 +284,7 @@ jobs:
         with:
           name: main-js
           path: ./editors/code/base/dist/main.min.common.js
+          if-no-files-found: error
   build-vsix:
     name: Build and publish vsix
     needs: [build-bin, build-js]
@@ -419,16 +425,28 @@ jobs:
       - name: upload the base ${{ matrix.native.vscode-target }} vsix
         uses: actions/upload-artifact@v4
         with:
-          name: cconvention-${{matrix.native.vscode-target}}.vsix
+          name: cconvention-base-${{matrix.native.vscode-target}}.vsix
           path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
-      - name: upload the base ${{ matrix.native.vscode-target }} vsix
+          if-no-files-found: error
+
+      - name: build the base ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
+        if: matrix.cross.target
+        shell: bash
+        run: |
+          ./scripts/build_vsix.sh \
+            --version=base        \
+            --profile=release     \
+            --target=${{ matrix.cross.target }}
+      - name: upload the base ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
+        if: matrix.cross.target
         uses: actions/upload-artifact@v4
         with:
-          name: cconvention-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+          name: cconvention-base-${{matrix.cross.vscode-target}}.vsix
+          path: ./editors/code/base/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
+          if-no-files-found: error
 
-      - name: publish the base ${{ matrix.native.vscode-target }} vsix
-        if: startsWith(github.ref_name, 'v')
+      - name: publish the base ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
+        if: matrix.cross.target && startsWith(github.ref_name, 'v')
         shell: bash
         run: |
           set -eu
@@ -436,8 +454,9 @@ jobs:
           VSCE_PAT=${{ secrets.BASE_VSCE_PAT }} vsce publish \
             --no-dependencies                                \
             --no-git-tag-version                             \
+            --skip-duplicate                                 \
             --packagePath                                    \
-            ./dist/cconvention.${{matrix.native.vscode-target}}.vsix
+            ./dist/cconvention.${{matrix.cross.vscode-target}}.vsix
 
       - name: build the pro ${{ matrix.native.vscode-target }} vsix
         shell: bash
@@ -449,24 +468,26 @@ jobs:
       - name: upload the pro ${{ matrix.native.vscode-target }} vsix
         uses: actions/upload-artifact@v4
         with:
-          name: cconvention-${{matrix.native.vscode-target}}.vsix
-          path: ./editors/code/base/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+          name: cconvention-pro-${{matrix.native.vscode-target}}.vsix
+          path: ./editors/code/pro/dist/cconvention.${{ matrix.native.vscode-target }}.vsix
+          if-no-files-found: error
 
-      - name: build the base ${{ matrix.cross.vscode-target }} vsix
+      - name: build the pro ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
         if: matrix.cross.target
         shell: bash
         run: |
           ./scripts/build_vsix.sh \
-            --version=base        \
+            --version=pro         \
             --profile=release     \
             --target=${{ matrix.cross.target }}
-      - name: upload the pro ${{ matrix.cross.vscode-target }} vsix
+      - name: upload the pro ${{ matrix.cross.vscode-target || '<missing cross>' }} vsix
         if: matrix.cross.target
         uses: actions/upload-artifact@v4
         with:
-          name: cconvention-${{matrix.cross.vscode-target}}.vsix
+          name: cconvention-pro-${{matrix.cross.vscode-target}}.vsix
           path: ./editors/code/pro/dist/cconvention.${{ matrix.cross.vscode-target }}.vsix
-      # TODO: build pro vsix?
+          if-no-files-found: error
+
       - name: "check cross base debuginfo: ${{ matrix.cross.target || '<skip>'}}"
         if: matrix.cross.target
         run: |
@@ -493,53 +514,62 @@ jobs:
 
   release:
     name: Create GitHub release
+    runs-on: ubuntu-latest
+    needs: [build-vsix]
     steps:
       - name: Get the release version from the tag
         id: "release_id"
         if: env.VERSION == ''
         shell: bash
         run: |
-          semver_regex='^v[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*$'
-          VERSION="$(echo "${{ github.ref_name }}" | grep -E "$semver_regex" || true)"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          if [ -n "${VERSION:-}" ]; then
-            echo "ok=true"  >> "$GITHUB_OUTPUT"
+          semver_regex='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          github_ref="${{ github.ref_name }}"
+          echo "ref=${github_ref}"
+          if (echo "$github_ref" | grep -qE "$semver_regex"); then
+            echo "VERSION=${github_ref/v/}" | tee -a "$GITHUB_ENV"
+            echo "ok=true"  | tee -a "$GITHUB_OUTPUT"
           else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "ok=false" | tee -a "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         with:
           fetch-depth: 1 # shallow clone for speed
       - name: Check that tag version and Cargo.toml version are the same
         shell: bash
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         run: |
-          if ! grep -q "version = \"$VERSION\"" Cargo.toml; then
+
+          if ! grep -q "version = \"$VERSION\"" ./pkg/*/Cargo.toml; then
             echo "version does not match Cargo.toml" >&2
             exit 1
           fi
       - name: Create GitHub release
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$VERSION" --draft --verify-tag --title "$VERSION"
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION"
       - uses: actions/download-artifact@v4
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         with:
           pattern: "cconvention-*"
           path: artifacts
+      - name: flatten directory
+        shell: bash
+        run: |
+          mkdir flattened
+          find ./artifacts -type f -exec mv '{}' ./flattened/ ';'
       - name: "checksums"
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         shell: bash
         run: |
-          cd artifacts && shasum -a 256 * > checksums.txt
+          cd flattened && shasum -a 256 * > checksums.txt
       - name: "upload artifacts"
-        if: steps.release_id.ok == "true"
+        if: steps.release_id.outputs.ok == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         shell: bash
         run: |
-          cd artifacts;
-          find . -type f -exec gh release upload "$VERSION" '{}' ';'
+          cd flattened &&
+          find . -type f -exec gh release upload "v$VERSION" '{}' ';'
