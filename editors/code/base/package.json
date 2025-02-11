@@ -81,7 +81,7 @@
     "@types/node": "^18.17.11",
     "@types/vscode": "~1.77.0",
     "@vscode/vsce": "~2.22.0",
-    "esbuild": "~0.17.19",
+    "esbuild": "~0.25.0",
     "js-yaml": "^4.1.0",
     "prettier": "^2.8.8",
     "sharp": "^0.32.6",
